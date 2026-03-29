@@ -120,19 +120,20 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
     Returns True when idle, False on timeout.
 
     Strategy:
-      1. If the player exposes media_duration and media_position attributes,
-         use them to detect completion precisely (position >= duration).
-         This avoids delays caused by slow state transitions on platforms
-         like LinkPlay/Arylic.
-      2. Otherwise fall back to state-based detection: wait for the player
-         to enter 'playing' then leave it.
-      3. If the player never enters 'playing' within 5s, assume done
+      1. Poll until the player enters 'playing'.
+      2. Once playing, if media_duration is available, sleep for the
+         remaining duration instead of polling.  This avoids the multi-second
+         delay caused by slow state transitions on LinkPlay/Arylic devices.
+      3. If media_duration is not available, fall back to polling for the
+         state to leave 'playing'.
+      4. If the player never enters 'playing' within 5s, assume done
          (handles players that don't expose state, or very short clips).
     """
     import time as _time
     deadline        = _time.time() + timeout
     playing_seen    = False
     playing_grace   = _time.time() + 5.0   # 5s for player to report 'playing'
+    sleep_scheduled = False
 
     _time.sleep(0.3)   # brief wait for command to reach player
 
@@ -145,18 +146,35 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
             if state == "playing":
                 playing_seen = True
 
-                # Prefer position/duration tracking for precise completion
                 duration = attrs.get("media_duration")
                 position = attrs.get("media_position")
+
                 if duration is not None and position is not None:
                     try:
-                        if float(position) >= float(duration) - 0.5:
+                        dur = float(duration)
+                        pos = float(position)
+                        remaining = dur - pos
+                        if remaining <= 0.5:
+                            # Already at end of track
                             logger.debug(
                                 "wait_until_idle: %s finished via position "
                                 "(%.1f/%.1f)",
-                                entity_id, float(position), float(duration),
+                                entity_id, pos, dur,
                             )
                             return True
+                        if not sleep_scheduled:
+                            # Sleep for remaining duration instead of polling.
+                            # Subtract a small margin so we wake up just before
+                            # the track ends, then one final poll confirms.
+                            sleep_for = max(0.1, remaining - 0.3)
+                            logger.debug(
+                                "wait_until_idle: %s sleeping %.1fs "
+                                "(duration=%.1f, position=%.1f)",
+                                entity_id, sleep_for, dur, pos,
+                            )
+                            _time.sleep(sleep_for)
+                            sleep_scheduled = True
+                            continue  # re-poll immediately after waking
                     except (TypeError, ValueError):
                         pass  # fall through to state-based check
 
