@@ -6,8 +6,10 @@ All calls go through the Supervisor proxy at http://supervisor/core/api.
 """
 
 import os
+import struct
 import logging
 import requests
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,219 @@ def _delete(path: str) -> bool:
         return False
 
 
+# ── Audio file duration helpers ───────────────────────────────────────────────
+
+# MPEG bitrate lookup tables (kbps).  Index 0 is "free", 15 is "bad".
+_BITRATES_V1_L3 = [0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0]
+_BITRATES_V2_L3 = [0,8,16,24,32,40,48,56,64,80,96,112,128,144,160,0]
+_SAMPLE_RATES_V1 = [44100, 48000, 32000, 0]
+_SAMPLE_RATES_V2 = [22050, 24000, 16000, 0]
+_SAMPLE_RATES_V25 = [11025, 12000, 8000, 0]
+
+# Directories where sound files can be found (bundled + user-uploaded).
+_SOUND_DIRS = [
+    Path("/opt/station_assistant/sounds"),
+    Path("/media/station_assistant"),
+    Path("/config/www/station_assistant/sounds"),
+]
+
+
+def _find_sound_file(filename: str) -> Optional[Path]:
+    """Locate a sound file on the local filesystem."""
+    for d in _SOUND_DIRS:
+        p = d / filename
+        if p.is_file():
+            return p
+    logger.warning(
+        "_find_sound_file: %s not found in any of: %s",
+        filename, [str(d) for d in _SOUND_DIRS],
+    )
+    return None
+
+
+def _get_wav_duration(path: Path) -> Optional[float]:
+    """Return duration of a WAV file in seconds, or None on failure."""
+    try:
+        with open(path, "rb") as f:
+            riff = f.read(12)
+            if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:12] != b"WAVE":
+                return None
+
+            fmt_found = False
+            byte_rate = 0
+            data_size = 0
+
+            while True:
+                chunk_hdr = f.read(8)
+                if len(chunk_hdr) < 8:
+                    break
+                chunk_id = chunk_hdr[:4]
+                chunk_size = struct.unpack_from("<I", chunk_hdr, 4)[0]
+
+                if chunk_id == b"fmt ":
+                    fmt_data = f.read(min(chunk_size, 16))
+                    if len(fmt_data) < 16:
+                        return None
+                    channels = struct.unpack_from("<H", fmt_data, 2)[0]
+                    sample_rate = struct.unpack_from("<I", fmt_data, 4)[0]
+                    byte_rate = struct.unpack_from("<I", fmt_data, 8)[0]
+                    if byte_rate == 0 and sample_rate > 0:
+                        bits_per_sample = struct.unpack_from("<H", fmt_data, 14)[0]
+                        byte_rate = sample_rate * channels * bits_per_sample // 8
+                    remaining = chunk_size - 16
+                    if remaining > 0:
+                        f.seek(remaining, 1)
+                    fmt_found = True
+                elif chunk_id == b"data":
+                    data_size = chunk_size
+                    break
+                else:
+                    f.seek(chunk_size, 1)
+
+            if fmt_found and byte_rate > 0 and data_size > 0:
+                return round(data_size / byte_rate, 2)
+
+    except Exception as e:
+        logger.debug("_get_wav_duration(%s): %s", path, e)
+    return None
+
+
+def _get_mp3_duration(path: Path) -> Optional[float]:
+    """Return duration of an MP3 file in seconds, or None on failure."""
+    try:
+        file_size = path.stat().st_size
+        with open(path, "rb") as f:
+            header = f.read(10)
+            if len(header) < 10:
+                return None
+            if header[:3] == b"ID3":
+                tag_size = (
+                    (header[6] & 0x7F) << 21
+                    | (header[7] & 0x7F) << 14
+                    | (header[8] & 0x7F) << 7
+                    | (header[9] & 0x7F)
+                )
+                f.seek(10 + tag_size)
+            else:
+                f.seek(0)
+
+            buf = f.read(4)
+            attempts = 0
+            while len(buf) == 4 and attempts < 8192:
+                if buf[0] == 0xFF and (buf[1] & 0xE0) == 0xE0:
+                    ver_bits = (buf[1] >> 3) & 0x03
+                    br_index = (buf[2] >> 4) & 0x0F
+                    sr_index = (buf[2] >> 2) & 0x03
+
+                    if ver_bits == 0x03:
+                        bitrate = _BITRATES_V1_L3[br_index]
+                        sr = _SAMPLE_RATES_V1[sr_index]
+                    elif ver_bits == 0x02:
+                        bitrate = _BITRATES_V2_L3[br_index]
+                        sr = _SAMPLE_RATES_V2[sr_index]
+                    elif ver_bits == 0x00:
+                        bitrate = _BITRATES_V2_L3[br_index]
+                        sr = _SAMPLE_RATES_V25[sr_index]
+                    else:
+                        bitrate = 0
+                        sr = 0
+
+                    if bitrate > 0 and sr > 0:
+                        audio_bytes = file_size - f.tell() + 4
+                        duration = audio_bytes / (bitrate * 125)
+                        return round(duration, 2)
+
+                f.seek(-3, 1)
+                buf = f.read(4)
+                attempts += 1
+
+    except Exception as e:
+        logger.debug("_get_mp3_duration(%s): %s", path, e)
+    return None
+
+
+def get_sound_duration(filename: str) -> Optional[float]:
+    """Return the duration in seconds of a local sound file (MP3 or WAV)."""
+    path = _find_sound_file(filename)
+    if path is None:
+        return None
+
+    suffix = path.suffix.lower()
+    if suffix == ".wav":
+        return _get_wav_duration(path)
+    return _get_mp3_duration(path)
+
+
+def concatenate_sounds(filenames: list[str]) -> Optional[str]:
+    """Concatenate multiple MP3 files into a single temporary file.
+
+    Returns the filename of the combined file, or None on failure.
+    """
+    if not filenames:
+        return None
+
+    logger.info("concatenate_sounds: merging %s", filenames)
+
+    paths = []
+    for fn in filenames:
+        p = _find_sound_file(fn)
+        if p is None:
+            logger.error("concatenate_sounds: FAILED — file not found: %s", fn)
+            return None
+        paths.append(p)
+
+    if len(paths) == 1:
+        logger.debug("concatenate_sounds: only 1 file, skipping merge")
+        return None
+
+    out_dir = Path("/media/station_assistant")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "_combined_alert.mp3"
+    try:
+        with open(out_path, "wb") as out:
+            for p in paths:
+                with open(p, "rb") as src:
+                    header = src.read(10)
+                    if len(header) >= 10 and header[:3] == b"ID3":
+                        tag_size = (
+                            (header[6] & 0x7F) << 21
+                            | (header[7] & 0x7F) << 14
+                            | (header[8] & 0x7F) << 7
+                            | (header[9] & 0x7F)
+                        )
+                        src.seek(10 + tag_size)
+                    else:
+                        src.seek(0)
+                    while True:
+                        chunk = src.read(65536)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+
+        logger.info(
+            "concatenate_sounds: merged %d files → %s (%.1f KB)",
+            len(paths), out_path.name, out_path.stat().st_size / 1024,
+        )
+        return out_path.name
+
+    except Exception as e:
+        logger.error("concatenate_sounds failed: %s", e)
+        if out_path.exists():
+            out_path.unlink()
+        return None
+
+
+def cleanup_combined_sound() -> None:
+    """Remove the temporary combined alert file after playback."""
+    combined = Path("/media/station_assistant/_combined_alert.mp3")
+    try:
+        if combined.exists():
+            combined.unlink()
+    except Exception as e:
+        logger.debug("cleanup_combined_sound: %s", e)
+
+
 # ── Media action helpers ───────────────────────────────────────────────────────
 
 def _build_media_actions(seq: dict) -> list:
@@ -81,23 +296,21 @@ def _build_media_actions(seq: dict) -> list:
 def play_sound(entities, sound_filename: str) -> bool:
     """
     Play a sound file on one or more HA media_player entities simultaneously.
-    entities: a single entity_id string, or a list of entity_id strings.
-    HA's media_player.play_media service accepts entity_id as a list and fans
-    out to all players in a single call.
     """
     if isinstance(entities, str):
         entity_id = entities
     elif isinstance(entities, list) and len(entities) == 1:
         entity_id = entities[0]
     else:
-        entity_id = entities   # HA accepts a list natively
+        entity_id = entities
     media_content_id = (
         f"media-source://media_source/local/station_assistant/{sound_filename}"
     )
+    mime = "audio/wav" if sound_filename.lower().endswith(".wav") else "audio/mpeg"
     payload = {
         "entity_id":          entity_id,
         "media_content_id":   media_content_id,
-        "media_content_type": "audio/mpeg",
+        "media_content_type": mime,
     }
     result = _post("/services/media_player/play_media", payload)
     targets = entity_id if isinstance(entity_id, str) else ", ".join(entity_id)
@@ -114,24 +327,31 @@ def stop_media(entity_id: str) -> bool:
     return result is not None
 
 
-def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
+def wait_until_idle(entity_id: str, timeout: float = 120.0,
+                    known_duration: Optional[float] = None) -> bool:
     """
-    Poll a HA media_player entity until it finishes playing.
-    Returns True when idle, False on timeout.
+    Wait for a media_player to finish playing, then return.
 
-    Strategy:
-      - Brief initial sleep to allow the player to transition to 'playing'
-      - Poll every 300ms
-      - If we observe 'playing', wait until it stops
-      - If the player never enters 'playing' within 5s, assume done
-        (handles players that don't expose state, or very short clips)
+    If *known_duration* is provided (seconds), sleeps for that duration
+    plus a small buffer instead of polling the player state.
     """
     import time as _time
+
+    if known_duration is not None and known_duration > 0:
+        sleep_for = known_duration + 0.3
+        logger.debug(
+            "wait_until_idle: %s sleeping %.1fs (known_duration=%.1f)",
+            entity_id, sleep_for, known_duration,
+        )
+        _time.sleep(sleep_for)
+        return True
+
+    # Fallback: poll player state
     deadline        = _time.time() + timeout
     playing_seen    = False
-    playing_grace   = _time.time() + 5.0   # 5s for player to report 'playing'
+    playing_grace   = _time.time() + 5.0
 
-    _time.sleep(0.3)   # brief wait for command to reach player
+    _time.sleep(0.3)
 
     while _time.time() < deadline:
         state_data = _get(f"/states/{entity_id}", timeout=3)
@@ -140,10 +360,8 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
             if state == "playing":
                 playing_seen = True
             elif playing_seen:
-                # Was playing, now stopped — done
                 return True
             elif not playing_seen and _time.time() > playing_grace:
-                # Never reported 'playing' — assume completed or unsupported
                 logger.debug(
                     "wait_until_idle: %s never entered playing state, continuing",
                     entity_id,
@@ -158,8 +376,6 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
 def _split_user_actions(actions: list) -> tuple:
     """
     Split an action list into (our_media_actions, user_custom_actions).
-    Our generated media_player.play_media actions are expected at the start.
-    Any non-media_player actions that follow are user-added and are preserved.
     """
     if not actions:
         return [], []
@@ -177,8 +393,6 @@ def _split_user_actions(actions: list) -> tuple:
 def _automation_config(seq: dict, preserve_actions: list = None) -> dict:
     """
     Build a HA automation config dict for a given sequence.
-    Only the trigger block and metadata are managed by this add-on.
-    If preserve_actions is provided, those actions are kept intact.
     """
     return {
         "id": seq["ha_automation_id"],
@@ -210,10 +424,7 @@ def _automation_config(seq: dict, preserve_actions: list = None) -> dict:
 # ── Automation CRUD ────────────────────────────────────────────────────────────
 
 def get_automation_config(auto_id: str) -> Optional[dict]:
-    """
-    Retrieve the full automation config including the user's action block.
-    Returns None if not found or on error.
-    """
+    """Retrieve the full automation config including the user's action block."""
     result = _get(f"/config/automation/config/{auto_id}")
     if isinstance(result, dict):
         return result
@@ -221,16 +432,9 @@ def get_automation_config(auto_id: str) -> Optional[dict]:
 
 
 def create_or_update_automation(seq: dict) -> bool:
-    """
-    Create or update the HA automation for a sequence.
-    Media playback actions (media_player.play_media) are always rebuilt from
-    the sequence's sound_1/2/3 + media_player_entity config.
-    Any user-added non-media actions that appear after the media block are preserved.
-    Returns True on success.
-    """
+    """Create or update the HA automation for a sequence."""
     auto_id = seq["ha_automation_id"]
 
-    # Fetch existing to recover user-added custom actions (those after our media block)
     existing = get_automation_config(auto_id)
     user_actions = []
     if existing and isinstance(existing, dict):
@@ -239,7 +443,6 @@ def create_or_update_automation(seq: dict) -> bool:
             logger.info("Preserving %d user action(s) for automation %s",
                         len(user_actions), auto_id)
 
-    # Rebuild fresh media actions from seq config
     media_actions = _build_media_actions(seq)
     all_actions = media_actions + user_actions
 
@@ -253,12 +456,7 @@ def create_or_update_automation(seq: dict) -> bool:
 
 
 def rename_automation(seq: dict, old_auto_id: str) -> bool:
-    """
-    Handle a sequence rename where the slug changed.
-    Fetches existing actions from the OLD automation, deletes it,
-    then creates the NEW automation with those actions preserved.
-    """
-    # Fetch existing actions from old automation before deleting
+    """Handle a sequence rename where the slug changed."""
     existing = get_automation_config(old_auto_id)
     preserved_actions = []
     if existing and isinstance(existing, dict):
@@ -269,10 +467,8 @@ def rename_automation(seq: dict, old_auto_id: str) -> bool:
                 len(preserved_actions), old_auto_id, seq["ha_automation_id"]
             )
 
-    # Delete old automation
     delete_automation(old_auto_id)
 
-    # Create new automation with preserved actions
     config = _automation_config(seq, preserve_actions=preserved_actions)
     new_id = seq["ha_automation_id"]
     result = _post(f"/config/automation/config/{new_id}", config)
@@ -292,27 +488,14 @@ def delete_automation(auto_id: str) -> bool:
 
 
 def trigger_automation(seq: dict) -> bool:
-    """
-    Test a sequence by firing the two_tone_decoded event directly on the HA
-    event bus — identical to what real audio detection does.
-    Avoids the entity_id guessing problem (HA derives entity_id from the
-    automation alias, not from our config id).
-    """
+    """Test a sequence by firing the two_tone_decoded event directly."""
     from datetime import datetime, timezone
     detected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return fire_two_tone_event(seq, confidence=1.0, detected_at=detected_at)
 
 
 def fire_health_event(status: str, message: str) -> bool:
-    """Fire a two_tone_decoder_health event on the HA event bus.
-
-    This enables HA automations that react to decoder health changes
-    (e.g. notify when the system goes down or audio is lost).
-
-    Args:
-        status: One of "started", "stopped", "error", "audio_lost", "audio_restored"
-        message: Human-readable description of the health change
-    """
+    """Fire a two_tone_decoder_health event on the HA event bus."""
     from datetime import datetime, timezone
     payload = {
         "status": status,
@@ -328,11 +511,7 @@ def fire_health_event(status: str, message: str) -> bool:
 
 
 def push_decoder_sensor(status: str, error: str = "", extra: dict | None = None) -> bool:
-    """Write decoder state directly to a persistent HA sensor entity.
-
-    Creates sensor.station_assistant_decoder automatically on first call.
-    States: 'running', 'stopped', 'error', 'audio_lost', 'audio_restored'
-    """
+    """Write decoder state directly to a persistent HA sensor entity."""
     from datetime import datetime, timezone
     attrs = {
         "friendly_name": "Station Assistant Decoder",
@@ -350,13 +529,7 @@ def push_decoder_sensor(status: str, error: str = "", extra: dict | None = None)
 
 
 def push_watchdog_sensor(app_version: str = "") -> bool:
-    """Push a heartbeat to sensor.station_assistant_watchdog.
-
-    Updated every 60 seconds while the addon is running.
-    If the timestamp stops updating, a HA automation can fire an alert.
-    Create a HA automation that triggers when
-    sensor.station_assistant_watchdog has not changed for > 3 minutes.
-    """
+    """Push a heartbeat to sensor.station_assistant_watchdog."""
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     result = _post("/states/sensor.station_assistant_watchdog", {
@@ -390,11 +563,7 @@ def fire_two_tone_event(seq: dict, confidence: float, detected_at: str) -> bool:
 
 
 def reload_automations() -> bool:
-    """
-    Call HA's automation.reload service so newly created / updated automations
-    are loaded into the automation engine and appear in the HA UI.
-    Must be called after any create_or_update_automation / rename / delete.
-    """
+    """Call HA's automation.reload service."""
     result = _post("/services/automation/reload", {})
     if result is not None:
         logger.info("automation.reload service called — automations refreshed")
@@ -418,16 +587,7 @@ def get_automation_state(auto_id: str) -> Optional[str]:
 
 
 def get_all_automation_states() -> dict:
-    """
-    Return a dict that can be looked up by EITHER:
-      - the HA entity_id  (e.g. "automation.two_tone_paging_sequence_engine_1")
-      - the automation config id stored in attributes.id
-         (e.g. "two_tone_engine_1" — the value we set when creating the automation)
-
-    HA derives entity_id from the alias (friendly name), not from the config id,
-    so we must index both ways to reliably find our automations.
-    Returns an empty dict if HA is unreachable (safe fallback).
-    """
+    """Return a dict indexed by entity_id and config id."""
     states = _get("/states", timeout=2)
     if not states:
         return {}
@@ -439,10 +599,10 @@ def get_all_automation_states() -> dict:
         if not entity_id.startswith("automation."):
             continue
         state = s.get("state")
-        result[entity_id] = state                          # by entity_id
-        config_id = s.get("attributes", {}).get("id")     # HA exposes this in 2023.x+
+        result[entity_id] = state
+        config_id = s.get("attributes", {}).get("id")
         if config_id:
-            result[config_id] = state                      # by config id
+            result[config_id] = state
     return result
 
 

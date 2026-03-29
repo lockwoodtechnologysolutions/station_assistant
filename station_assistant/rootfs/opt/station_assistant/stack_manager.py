@@ -232,18 +232,33 @@ class StackManager:
             name="sa-audio",
         ).start()
 
+    def _play_and_wait(self, players: list, sound: str) -> None:
+        """Play a sound file and wait for it to finish."""
+        duration = ha.get_sound_duration(sound)
+        if duration:
+            logger.debug("File %s duration: %.2fs", sound, duration)
+        ha.play_sound(players, sound)
+        ha.wait_until_idle(players[0], known_duration=duration)
+
+    def _collect_sounds(self, slots: list[str], unit: dict) -> list[str]:
+        """Return list of non-empty sound filenames from a unit dict."""
+        sounds = []
+        for slot in slots:
+            sound = (unit.get(slot) or "").strip()
+            if sound:
+                sounds.append(sound)
+        return sounds
+
     def _play_audio(self, stack: list, is_multi: bool, multi_unit_sound: str) -> None:
         """
         Background thread — plays alert audio via direct HA REST API calls.
 
-        Single unit:  Sound 1 (ramp-up) → wait idle → Sound 2 → wait idle → Sound 3
-        Multi-unit:   Multi-Unit Ramp Up → wait idle →
-                        Unit 1 Sound 2 → wait → Unit 1 Sound 3 →
-                        Unit 2 Sound 2 → wait → Unit 2 Sound 3 → ...
+        Concatenates all sound files into a single MP3 before playing,
+        so the media player only buffers once.  Falls back to sequential
+        playback if concatenation fails.
         """
         try:
             if is_multi:
-                # Collect unique media players across all stacked units
                 entities = []
                 for unit in stack:
                     for e in unit.get("media_players", []):
@@ -255,42 +270,71 @@ class StackManager:
                     logger.debug("No media players configured — skipping audio")
                     return
 
-                # Play multi-unit ramp-up to all entities simultaneously
+                all_sounds = []
                 if multi_unit_sound:
-                    ha.play_sound(entities, multi_unit_sound)
-                    # Wait for the first entity to finish before apparatus tones
-                    ha.wait_until_idle(entities[0])
-                    logger.info("Multi-unit ramp-up complete: %s", multi_unit_sound)
+                    all_sounds.append(multi_unit_sound)
+                for unit in stack:
+                    all_sounds.extend(self._collect_sounds(
+                        ["sound_2", "sound_3"], unit,
+                    ))
 
-                # Play apparatus tones (Sound 2, Sound 3) per unit in order
+                if self._play_combined(entities, all_sounds):
+                    return
+
+                # Fallback: play files individually
+                if multi_unit_sound:
+                    self._play_and_wait(entities, multi_unit_sound)
+                    logger.info("Multi-unit ramp-up complete: %s", multi_unit_sound)
                 for unit in stack:
                     players = unit.get("media_players", [])
                     if not players:
                         continue
-                    for slot in ("sound_2", "sound_3"):
-                        sound = (unit.get(slot) or "").strip()
-                        if sound:
-                            ha.play_sound(players, sound)
-                            ha.wait_until_idle(players[0])
-                            logger.info("Played apparatus tone: %s → %s", sound, players)
+                    for sound in self._collect_sounds(["sound_2", "sound_3"], unit):
+                        self._play_and_wait(players, sound)
+                        logger.info("Played apparatus tone: %s → %s", sound, players)
 
             else:
-                # Single unit — play all three sounds in sequence
                 unit    = stack[0]
                 players = unit.get("media_players", [])
                 if not players:
                     logger.debug("No media player configured — skipping audio")
                     return
 
-                for slot in ("sound_1", "sound_2", "sound_3"):
-                    sound = (unit.get(slot) or "").strip()
-                    if sound:
-                        ha.play_sound(players, sound)
-                        ha.wait_until_idle(players[0])
-                        logger.info("Played: %s → %s", sound, players)
+                all_sounds = self._collect_sounds(
+                    ["sound_1", "sound_2", "sound_3"], unit,
+                )
+
+                if self._play_combined(players, all_sounds):
+                    return
+
+                # Fallback: play files individually
+                for sound in all_sounds:
+                    self._play_and_wait(players, sound)
+                    logger.info("Played: %s → %s", sound, players)
 
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
+        finally:
+            ha.cleanup_combined_sound()
+
+    def _play_combined(self, players: list, sounds: list[str]) -> bool:
+        """Concatenate sounds into one file, play it, and wait."""
+        if len(sounds) < 2:
+            return False
+
+        combined = ha.concatenate_sounds(sounds)
+        if not combined:
+            return False
+
+        duration = ha.get_sound_duration(combined)
+        logger.info(
+            "Playing combined alert (%d files, %.1fs): %s → %s",
+            len(sounds), duration or 0, sounds, players,
+        )
+        ha.play_sound(players, combined)
+        ha.wait_until_idle(players[0] if isinstance(players, list) else players,
+                           known_duration=duration)
+        return True
 
     def _go_idle(self) -> None:
         """Clear stack, cancel timers, invoke idle callback."""
