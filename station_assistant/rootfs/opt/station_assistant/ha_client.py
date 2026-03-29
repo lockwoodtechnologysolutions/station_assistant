@@ -393,8 +393,13 @@ def play_sound(entities, sound_filename: str) -> bool:
     return False
 
 
-def play_url(entities, url: str, mime: str = "audio/mpeg") -> bool:
-    """Play an arbitrary HTTP URL on one or more HA media_player entities."""
+def play_url(entities, url: str, mime: str = "music") -> bool:
+    """Play an arbitrary HTTP URL on one or more HA media_player entities.
+
+    Uses media_content_type 'music' which tells integrations like LinkPlay
+    to stream the URL directly rather than trying to resolve it as a
+    media source.
+    """
     if isinstance(entities, str):
         entity_id = entities
     elif isinstance(entities, list) and len(entities) == 1:
