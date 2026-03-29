@@ -1,0 +1,238 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Station Assistant — Status</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap');
+:root {
+  --bg:#07090c;--surface:#0c1018;--border:#1a2535;--border2:#243548;
+  --accent:#1e6fa8;--accent2:#2a8fd4;--green:#1a7a4a;--green2:#22a362;
+  --red:#8a2020;--red2:#c04040;--text:#c8d8e8;--muted:#3a5068;--label:#5a8098;
+  --mono:'Share Tech Mono',monospace;--sans:'Barlow',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;min-height:100vh;padding-bottom:60px}
+.sa-header{background:var(--surface);border-bottom:1px solid var(--border);padding:18px 28px;display:flex;align-items:center;justify-content:space-between}
+.sa-header-left{display:flex;align-items:center;gap:14px}
+.sa-logo{width:32px;height:32px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.sa-title{font-family:var(--mono);font-size:14px;color:#e8f4ff;letter-spacing:2px}
+.sa-subtitle{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.sa-nav-links{display:flex;gap:4px}
+.sa-nav-link{font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--muted);text-decoration:none;padding:6px 14px;border-radius:5px;text-transform:uppercase;transition:all 0.15s}
+.sa-nav-link:hover{color:var(--accent2);background:#0f1e2e}
+.sa-nav-link.active{color:var(--accent2);background:#0f1e2e}
+.sa-container{max-width:660px;margin:0 auto;padding:28px 20px}
+.sa-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:22px;margin-bottom:18px}
+.sa-card-title{font-family:var(--mono);font-size:10px;letter-spacing:4px;color:var(--label);text-transform:uppercase;margin-bottom:18px;display:flex;align-items:center;gap:10px}
+.sa-card-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.sa-stat-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
+.sa-stat-row:last-child{border-bottom:none}
+.sa-stat-key{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--label);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.sa-stat-val{font-family:var(--mono);font-size:13px;color:var(--text)}
+.sa-stat-val.ok{color:var(--green2)}
+.sa-stat-val.err{color:var(--red2)}
+.sa-stat-val.muted{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:4px;font-size:10px;letter-spacing:2px;text-transform:uppercase}
+.pill.ok{background:#0a1a0e;color:var(--green2);border:1px solid var(--green)}
+.pill.err{background:#1a0808;color:var(--red2);border:1px solid var(--red)}
+.pill.muted{background:#0a1016;color:var(--muted);border:1px solid var(--border)}
+.pill-dot{width:5px;height:5px;border-radius:50%;background:currentColor}
+.sa-level-track{width:140px;height:5px;background:#0a1520;border-radius:3px;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:8px}
+.sa-level-fill{height:100%;background:var(--green2);border-radius:3px;transition:width 0.5s}
+.sa-level-fill.warn{background:#b07000}
+.sa-level-fill.clip{background:var(--red2)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.stat-box{background:#080d12;border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center}
+.stat-box-val{font-family:var(--mono);font-size:28px;color:#ddeeff;letter-spacing:2px;margin-bottom:4px}
+.stat-box-lbl{font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
+.sa-btn{display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--label);font-family:var(--mono);font-size:11px;letter-spacing:2px;padding:8px 16px;cursor:pointer;text-transform:uppercase;transition:all 0.15s;margin-top:10px}
+.sa-btn:hover{background:#0f1e2e;border-color:var(--accent);color:var(--accent2)}
+</style>
+</head>
+<body>
+
+<div class="sa-header">
+  <div class="sa-header-left">
+    <div class="sa-logo">🚒</div>
+    <div>
+      <div class="sa-title">STATION ASSISTANT</div>
+      <div class="sa-subtitle">System Status</div>
+    </div>
+  </div>
+  <div class="sa-nav-links">
+    <a href="{{ script_root }}/"         class="sa-nav-link">Home</a>
+    <a href="{{ script_root }}/dashboard" class="sa-nav-link">Alert Dashboard</a>
+    <a href="{{ script_root }}/settings"  class="sa-nav-link">Settings</a>
+    <a href="{{ script_root }}/status"    class="sa-nav-link active">Status</a>
+  </div>
+</div>
+
+<div class="sa-container">
+
+  <div class="sa-card">
+    <div class="sa-card-title">System Health</div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Decoder Service</span>
+      <span class="sa-stat-val" id="s-decoder">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Uptime</span>
+      <span class="sa-stat-val" id="s-uptime">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Audio Input Device</span>
+      <span class="sa-stat-val" id="s-device">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Input Level</span>
+      <span class="sa-stat-val" id="s-level">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">HA Connection</span>
+      <span class="sa-stat-val" id="s-ha">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Weather Entity</span>
+      <span class="sa-stat-val" id="s-wx">—</span>
+    </div>
+  </div>
+
+  <div class="sa-card">
+    <div class="sa-card-title">Alert Statistics</div>
+    <div class="stat-grid" style="margin-bottom:18px">
+      <div class="stat-box">
+        <div class="stat-box-val" id="s-today">—</div>
+        <div class="stat-box-lbl">Alerts Today</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-val" id="s-week">—</div>
+        <div class="stat-box-lbl">Alerts This Week</div>
+      </div>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Last Alert</span>
+      <span class="sa-stat-val" id="s-last">—</span>
+    </div>
+  </div>
+
+  <div class="sa-card">
+    <div class="sa-card-title">Tone Configuration</div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Tone 1</span>
+      <span class="sa-stat-val" id="s-t1">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Tone 2</span>
+      <span class="sa-stat-val" id="s-t2">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Stack Window</span>
+      <span class="sa-stat-val" id="s-stack">—</span>
+    </div>
+    <div class="sa-stat-row">
+      <span class="sa-stat-key">Return Timeout</span>
+      <span class="sa-stat-val" id="s-return">—</span>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button class="sa-btn" onclick="loadStatus()">&#8635; Refresh</button>
+    <button class="sa-btn" onclick="testTone('tone_1')">&#9654; Test Tone 1</button>
+    <button class="sa-btn" onclick="testTone('tone_2')">&#9654; Test Tone 2</button>
+  </div>
+
+</div>
+
+<script>
+const SCRIPT_ROOT = "{{ script_root }}";
+
+function pill(ok, label) {
+  const cls = ok ? 'ok' : 'err';
+  return `<span class="pill ${cls}"><span class="pill-dot"></span>${label}</span>`;
+}
+function levelBar(dbfs) {
+  if (dbfs === null || dbfs === undefined || dbfs <= -90) return '<span class="sa-stat-val muted">—</span>';
+  const pct = Math.max(0, Math.min(100, (dbfs + 60) / 60 * 100));
+  const cls = dbfs > -6 ? 'clip' : dbfs > -12 ? 'warn' : '';
+  return `<span class="sa-stat-val">${dbfs.toFixed(1)} dBFS<span class="sa-level-track"><span class="sa-level-fill ${cls}" style="width:${pct}%"></span></span></span>`;
+}
+
+async function loadStatus() {
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/status');
+    const d = await r.json();
+    const dec  = d.decoder || {};
+    const cfg  = d.config  || {};
+    const tones = d.tones  || [];
+
+    // Decoder health
+    document.getElementById('s-decoder').innerHTML = pill(dec.running, dec.running ? 'Running' : 'Stopped');
+    document.getElementById('s-uptime').innerHTML  =
+      `<span class="sa-stat-val${dec.uptime ? '' : ' muted'}">${dec.uptime || '—'}</span>`;
+
+    // Audio device: show device index (or name if available)
+    document.getElementById('s-device').innerHTML =
+      `<span class="sa-stat-val">${dec.device !== undefined ? dec.device : '—'}</span>`;
+
+    // Input level from last RMS reading
+    document.getElementById('s-level').innerHTML = levelBar(dec.input_level_dbfs);
+
+    // HA connection — use the ha object if present
+    const haOk = d.ha ? d.ha.connected : false;
+    document.getElementById('s-ha').innerHTML = pill(haOk, haOk ? 'Connected' : 'Disconnected');
+
+    // Weather entity from config
+    document.getElementById('s-wx').innerHTML =
+      `<span class="sa-stat-val">${cfg.weather_entity || '—'}</span>`;
+
+    // Alert stats
+    document.getElementById('s-today').textContent = dec.alerts_today ?? '—';
+    document.getElementById('s-week').textContent  = dec.alerts_week  ?? '—';
+
+    // Last alert — built from last_detection or dec.last_alert
+    // Detection log uses seq_name (not name) as the column name
+    const la = dec.last_alert || (d.last_detection
+      ? { label: d.last_detection.seq_name || d.last_detection.name || 'Unknown',
+          time: (d.last_detection.detected_at || '').slice(0,19).replace('T',' ') }
+      : null);
+    document.getElementById('s-last').innerHTML = la
+      ? `<span class="sa-stat-val">${la.label} &mdash; ${la.time}</span>`
+      : '<span class="sa-stat-val muted">No alerts yet</span>';
+
+    // Tone config
+    if (tones[0]) document.getElementById('s-t1').innerHTML =
+      `<span class="sa-stat-val">${tones[0].label} &mdash; ${tones[0].freq_a}/${tones[0].freq_b} Hz</span>`;
+    if (tones[1]) document.getElementById('s-t2').innerHTML =
+      `<span class="sa-stat-val">${tones[1].label} &mdash; ${tones[1].freq_a}/${tones[1].freq_b} Hz</span>`;
+
+    document.getElementById('s-stack').innerHTML  =
+      `<span class="sa-stat-val">${cfg.stack_window ?? '—'}s</span>`;
+    document.getElementById('s-return').innerHTML =
+      `<span class="sa-stat-val">${cfg.return_timeout ?? '—'}s</span>`;
+
+  } catch(e) {
+    console.error('Status load failed:', e);
+  }
+}
+
+async function testTone(id) {
+  try {
+    const r = await fetch(SCRIPT_ROOT + `/api/test/tone/${id}`, {method:'POST'});
+    const d = await r.json();
+    alert(d.message || 'Test fired');
+  } catch(e) { alert('Test failed'); }
+}
+
+loadStatus();
+setInterval(loadStatus, 10000);
+</script>
+<footer style="position:fixed;bottom:0;left:0;right:0;height:24px;background:rgba(0,0,0,.55);border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;color:rgba(255,255,255,.3);letter-spacing:.02em;z-index:9999">
+  Lockwood Technology Solutions
+  <span style="opacity:.5">&bull;</span>
+  <a href="https://www.lockwood.tech" target="_blank" rel="noopener noreferrer" style="color:rgba(255,255,255,.4);text-decoration:none">www.lockwood.tech</a>
+</footer>
+</body>
+</html>
+

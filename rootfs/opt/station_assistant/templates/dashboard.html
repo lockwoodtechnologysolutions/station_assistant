@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<link rel="icon" type="image/x-icon" href="{{ script_root }}/static/favicon.ico">
+<title>Station Assistant</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Bebas+Neue&family=Barlow:wght@300;400;600&display=swap');
+
+:root {
+  --bg:         #05080b;
+  --surface:    #080d12;
+  --border:     #0e1a24;
+  --accent:     #1a6090;
+  --text:       #b8ccd8;
+  --muted:      #243444;
+  --mono:       'Share Tech Mono', monospace;
+  --display:    'Bebas Neue', var(--mono);
+  --sans:       'Barlow', sans-serif;
+  --green:      #0d5c30;
+  --green2:     #12924d;
+  --red:        #8a1a1a;
+  --red2:       #c02020;
+  --blue:       #0a3a5c;
+  --blue2:      #1a70b0;
+  --amber:      #5c3a00;
+  --amber2:     #c08020;
+  /* Dynamic alert color (set via JS on each alert) */
+  --alert-r: 139;
+  --alert-g:  26;
+  --alert-b:  26;
+}
+
+/* ── Light mode overrides ─────────────────────────────────────────────── */
+body.light-mode {
+  --bg:      #ffffff;
+  --surface: #f2f4f6;
+  --border:  #cccccc;
+  --text:    #111111;
+  --muted:   #667788;
+  --green:   #d4f5e4;
+  --green2:  #178a48;
+  --red:     #fde8e8;
+  --red2:    #cc2020;
+  --blue:    #ddeeff;
+  --blue2:   #1060a0;
+  --amber:   #fff8dd;
+  --amber2:  #a05800;
+}
+/* General */
+body.light-mode { background: #ffffff; color: #111111; }
+body.light-mode::after { opacity: 0; }
+/* Header */
+body.light-mode #dept-header { background: rgba(255,255,255,0.98); border-bottom-color: #cccccc; }
+body.light-mode #dept-name-text { color: #111111; }
+body.light-mode #theme-toggle { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.18); color: #111111; }
+/* Idle screen */
+body.light-mode .idle-clock { color: #111111; }
+body.light-mode .idle-date  { color: #334455; }
+body.light-mode .idle-station { color: #445566; }
+body.light-mode .idle-wx { background: #f2f4f6; border-color: #cccccc; }
+body.light-mode .idle-wx-main { border-right-color: #cccccc; }
+body.light-mode .idle-wx-temp { color: #111111; }
+body.light-mode .idle-wx-cond { color: #445566; }
+body.light-mode .idle-wx-lbl  { color: #667788; }
+body.light-mode .idle-wx-val  { color: #111111; }
+body.light-mode .idle-wx-hr   { background: #e4e8ec; border-color: #cccccc; }
+body.light-mode .idle-wx-hr-t { color: #667788; }
+body.light-mode .idle-wx-hr-v { color: #111111; }
+body.light-mode .idle-wx-forecast { border-left-color: #cccccc; }
+/* Alert screen */
+body.light-mode .alert-eyebrow { color: #cc1010; }
+body.light-mode .alert-elapsed-lbl { color: #556677; }
+body.light-mode .alert-elapsed { color: #000000; }
+body.light-mode .unit-card { background: #f2f4f6; border-color: #cccccc; }
+body.light-mode .unit-card.primary { background: #fff0f0; border-color: #ddaaaa; }
+body.light-mode .unit-card.additional { background: #f0fff4; border-color: #aaddbb; }
+body.light-mode .unit-name { color: #000000; }
+body.light-mode .unit-icon { filter: none; }
+body.light-mode .stack-window-lbl { color: #889aaa; }
+body.light-mode .stack-window-val { color: #889aaa; }
+body.light-mode .stack-window-track { background: #dde4ec; }
+/* Footer bar */
+body.light-mode #last-alert-bar { background: #f2f4f6; border-top-color: #cccccc; }
+body.light-mode .last-alert-lbl { color: #445566; }
+body.light-mode .last-alert-sep { color: #aaaaaa; }
+body.light-mode .last-alert-info { color: #111111; }
+body.light-mode #conn-badge { color: #445566; }
+body.light-mode #conn-dot { background: #889aaa; }
+body.light-mode .lts-credit { color: rgba(80,100,120,0.45); }
+body.light-mode .lts-credit a { color: rgba(80,100,120,0.45); }
+
+/* ── Theme toggle button ──────────────────────────────────────────────── */
+#theme-toggle {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 18px;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  z-index: 301;
+  line-height: 1;
+}
+#theme-toggle:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.35); }
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+/* ── Scanline overlay ──────────────────────────────────────────────────── */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0,0,0,0.055) 0px,
+    rgba(0,0,0,0.055) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* ── Alert border flash ────────────────────────────────────────────────── */
+#alert-border {
+  position: fixed;
+  inset: 0;
+  border: 12px solid transparent;
+  pointer-events: none;
+  z-index: 998;
+}
+#alert-border.flash {
+  animation: borderFlash 0.65s ease-in-out infinite;
+}
+@keyframes borderFlash {
+  0%,100% {
+    border-color: rgba(var(--alert-r),var(--alert-g),var(--alert-b),0);
+    box-shadow: inset 0 0 0 rgba(var(--alert-r),var(--alert-g),var(--alert-b),0),
+                0 0 0 rgba(var(--alert-r),var(--alert-g),var(--alert-b),0);
+  }
+  50% {
+    border-color: rgba(var(--alert-r),var(--alert-g),var(--alert-b),1);
+    box-shadow: inset 0 0 120px rgba(var(--alert-r),var(--alert-g),var(--alert-b),0.35),
+                0 0 80px rgba(var(--alert-r),var(--alert-g),var(--alert-b),0.9);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   IDLE STATE
+══════════════════════════════════════════════════════════════════════════ */
+#idle {
+  position: fixed;
+  top: 70px; left: 0; right: 0; bottom: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  transition: opacity 0.5s ease;
+  padding: 16px 32px;
+}
+#idle.hidden { opacity: 0; pointer-events: none; }
+
+/* Station header */
+.idle-station {
+  font-family: var(--mono);
+  font-size: clamp(20px, 2.2vw, 30px);
+  letter-spacing: 5px;
+  color: #8ab8d4;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* Clock */
+.idle-clock {
+  font-family: var(--display);
+  font-size: clamp(96px, 15vw, 160px);
+  color: #d8eaf8;
+  letter-spacing: 6px;
+  line-height: 1;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.idle-date {
+  font-family: var(--mono);
+  font-size: clamp(20px, 2.4vw, 28px);
+  letter-spacing: 2px;
+  color: #6a9cbc;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+/* Weather block */
+.idle-wx {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+  margin: 0 auto 36px auto;
+  width: 90%;
+  max-width: 90%;
+  align-self: center;
+}
+.idle-wx-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 30px;
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 180px;
+}
+.idle-wx-icon { font-size: 72px; line-height: 1; }
+.idle-wx-temp {
+  font-family: var(--display);
+  font-size: 80px;
+  color: #eef6ff;
+  letter-spacing: 2px;
+  line-height: 1;
+}
+.idle-wx-cond {
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #8ab8d4;
+  text-transform: uppercase;
+  text-align: center;
+  margin-top: 4px;
+}
+.idle-wx-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 20px 30px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.idle-wx-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.idle-wx-lbl {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: #7a9ab8;
+  text-transform: uppercase;
+  width: 100px;
+  flex-shrink: 0;
+}
+.idle-wx-val {
+  font-family: var(--mono);
+  font-size: 26px;
+  color: #a8d0ee;
+  white-space: nowrap;
+}
+.idle-wx-forecast {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-left: 1px solid var(--border);
+  align-items: center;
+  flex-shrink: 0;
+}
+.idle-wx-hr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #060a0e;
+  min-width: 80px;
+}
+.idle-wx-hr-t {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #7a9ab8;
+}
+.idle-wx-hr-i { font-size: 36px; }
+.idle-wx-hr-v {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: #a8d0ee;
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALERT STATE
+══════════════════════════════════════════════════════════════════════════ */
+#alert {
+  position: fixed;
+  top: 70px; left: 0; right: 0; bottom: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  padding: 16px 32px;
+  gap: 0;
+}
+#alert.show {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Dispatched label */
+.alert-eyebrow {
+  font-family: var(--mono);
+  font-size: clamp(18px, 2.2vw, 28px);
+  letter-spacing: 6px;
+  color: #c04040;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* Elapsed timer */
+.alert-elapsed-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.alert-elapsed-lbl {
+  font-family: var(--mono);
+  font-size: clamp(16px, 1.8vw, 22px);
+  letter-spacing: 5px;
+  color: #6a8caa;
+  text-transform: uppercase;
+}
+.alert-elapsed {
+  font-family: var(--display);
+  font-size: clamp(72px, 10vw, 128px);
+  color: #4a88b8;
+  letter-spacing: 6px;
+  line-height: 1;
+}
+
+/* Unit stack */
+#unit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 780px;
+  margin-bottom: 20px;
+}
+
+.unit-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px 36px;
+  border-radius: 10px;
+  border: 1px solid #1a2a3a;
+  background: #070e14;
+  animation: slideIn 0.3s cubic-bezier(0.22,1,0.36,1);
+}
+@keyframes slideIn {
+  from { transform: translateX(-20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.unit-card.primary {
+  border-color: #3a1010;
+  background: #0c0608;
+}
+.unit-card.additional {
+  border-color: #0e2010;
+  background: #060c08;
+}
+
+.unit-left { display: flex; align-items: center; gap: 18px; }
+.unit-icon { font-size: clamp(36px, 4.5vw, 56px); line-height: 1; }
+.unit-name {
+  font-family: var(--display);
+  font-size: clamp(52px, 8vw, 96px);
+  letter-spacing: 3px;
+  line-height: 1;
+  color: #ffffff;
+}
+
+/* Stack window bar */
+.stack-window-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  max-width: 780px;
+  width: 100%;
+}
+.stack-window-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.stack-window-track {
+  flex: 1;
+  height: 2px;
+  background: #0a1820;
+  border-radius: 1px;
+  overflow: hidden;
+}
+.stack-window-fill {
+  height: 100%;
+  background: var(--green2);
+  border-radius: 1px;
+  width: 100%;
+  transition: width 1s linear;
+}
+.stack-window-fill.closed { background: var(--muted); }
+.stack-window-val {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  min-width: 46px;
+  text-align: right;
+}
+
+/* Return-to-idle progress bar */
+#return-bar-wrap {
+  position: fixed;
+  bottom: 54px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: #0a1520;
+  z-index: 100;
+}
+#return-bar {
+  height: 100%;
+  background: var(--red2);
+  width: 100%;
+  transition: width 1s linear;
+}
+
+/* ── Connection status badge ───────────────────────────────────────────── */
+
+/* ── Responsive scaling for small screens ──────────────────────────────── */
+/* ── Department header bar ───────────────────────────────────────────── */
+#dept-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 70px;
+  background: rgba(6, 10, 15, 0.97);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  z-index: 300;
+}
+#dept-logo-wrap {
+  flex-shrink: 0;
+  width: 54px; height: 54px;
+  display: flex; align-items: center; justify-content: center;
+}
+#dept-logo-img {
+  width: 54px; height: 54px;
+  object-fit: contain;
+}
+#dept-logo-placeholder { font-size: 38px; line-height: 1; }
+#dept-name-text {
+  font-family: var(--display);
+  font-size: clamp(22px, 3vw, 40px);
+  letter-spacing: 3px;
+  color: #e8f4ff;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Last alert + connection bar (bottom) ───────────────────────────── */
+#last-alert-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 54px;
+  background: #080f18;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  z-index: 200;
+}
+.lts-credit {
+  position: fixed;
+  bottom: 4px;
+  right: 14px;
+  z-index: 201;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.5px;
+  color: rgba(100,130,160,0.4);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.lts-credit a { color: rgba(100,130,160,0.4); text-decoration: none; pointer-events: all; }
+.lts-credit a:hover { color: rgba(100,130,160,0.8); }
+.last-alert-lbl {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.last-alert-sep { color: var(--border); font-family: var(--mono); flex-shrink: 0; font-size: 16px; }
+.last-alert-info {
+  font-family: var(--mono);
+  font-size: 17px;
+  color: #4a7898;
+  letter-spacing: 2px;
+  flex: 1;
+}
+#conn-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 3px;
+  color: var(--muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  transition: color 0.3s;
+}
+#conn-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 0 transparent;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+#conn-badge.connected { color: #4caf82; }
+#conn-badge.connected #conn-dot {
+  background: var(--green2);
+  box-shadow: 0 0 8px 2px rgba(72,200,130,0.6);
+}
+#conn-badge.disconnected { color: var(--red2); }
+#conn-badge.disconnected #conn-dot {
+  background: var(--red2);
+  animation: blink 0.7s ease-in-out infinite;
+  box-shadow: 0 0 8px 2px rgba(200,60,60,0.5);
+}
+@keyframes blink { 0%,100%{opacity:0.15} 50%{opacity:1} }
+
+/* Offline overlay */
+#offline-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(4, 8, 14, 0.72);
+  backdrop-filter: grayscale(80%) brightness(0.55);
+  -webkit-backdrop-filter: grayscale(80%) brightness(0.55);
+  z-index: 500;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 90px;
+}
+#offline-overlay.show { display: flex; }
+#offline-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: rgba(20, 6, 6, 0.92);
+  border: 2px solid var(--red2);
+  border-radius: 14px;
+  padding: 28px 56px;
+  box-shadow: 0 0 60px rgba(200,40,40,0.35), inset 0 0 40px rgba(200,40,40,0.08);
+  animation: offlinePulse 2s ease-in-out infinite;
+}
+@keyframes offlinePulse {
+  0%,100% { box-shadow: 0 0 40px rgba(200,40,40,0.25), inset 0 0 30px rgba(200,40,40,0.06); }
+  50%      { box-shadow: 0 0 80px rgba(200,40,40,0.55), inset 0 0 50px rgba(200,40,40,0.14); }
+}
+#offline-icon { line-height: 1; display: flex; align-items: center; justify-content: center; }
+#offline-title {
+  font-family: var(--display);
+  font-size: clamp(36px, 5vw, 64px);
+  letter-spacing: 8px;
+  color: var(--red2);
+  line-height: 1;
+}
+#offline-sub {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: #a05050;
+  text-transform: uppercase;
+}
+
+@media (max-width: 860px) {
+  .idle-wx { width: 100%; }
+}
+@media (max-width: 600px) {
+  .idle-wx-forecast { display: none; }
+  .idle-wx-details  { display: none; }
+  #dept-name-text   { font-size: 18px; }
+}
+@media (max-height: 500px) {
+  .idle-wx          { display: none; }
+  .idle-clock       { font-size: 64px; margin-bottom: 4px; }
+  #dept-header      { height: 50px; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- Alert border flash overlay -->
+<div id="alert-border"></div>
+
+<!-- Offline overlay -->
+<div id="offline-overlay">
+  <div id="offline-card">
+    <div id="offline-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="#a04040" stroke-linecap="round" stroke-linejoin="round" stroke-width="3">
+        <!-- cable body -->
+        <line x1="8" y1="32" x2="26" y2="32"/>
+        <!-- plug head -->
+        <rect x="26" y="24" width="10" height="16" rx="2" fill="rgba(120,40,40,0.3)" stroke="#a04040"/>
+        <!-- plug pins -->
+        <line x1="30" y1="24" x2="30" y2="20"/>
+        <line x1="34" y1="24" x2="34" y2="20"/>
+        <!-- gap / disconnect -->
+        <line x1="44" y1="32" x2="56" y2="32" stroke-dasharray="3 3" opacity="0.45"/>
+        <!-- socket (right side, slightly offset to show disconnection) -->
+        <rect x="37" y="26" width="10" height="16" rx="2" fill="rgba(80,20,20,0.2)" stroke="#7a3030"/>
+        <!-- X mark over gap -->
+        <line x1="37" y1="26" x2="47" y2="42" stroke="#c05050" stroke-width="2.5"/>
+        <line x1="47" y1="26" x2="37" y2="42" stroke="#c05050" stroke-width="2.5"/>
+      </svg>
+    </div>
+    <div id="offline-title">OFFLINE</div>
+    <div id="offline-sub">Attempting to reconnect&hellip;</div>
+  </div>
+</div>
+
+<!-- Department header bar -->
+<div id="dept-header">
+  <div id="dept-logo-wrap">
+    {% if config.has_logo %}
+    <img id="dept-logo-img" src="{{ script_root }}/api/logo" alt="Department Logo">
+    {% else %}
+    <div id="dept-logo-placeholder">🚒</div>
+    {% endif %}
+  </div>
+  <div id="dept-name-text">{{ config.dept_name or 'Station Assistant' }}</div>
+  <button id="theme-toggle" title="Toggle dark/light mode" onclick="toggleTheme()">🌓</button>
+</div>
+
+<!-- ════════════════════════════════ IDLE STATE ════════════════════════════ -->
+<div id="idle">
+  <div class="idle-station" id="idle-station">Station Assistant</div>
+
+  <div class="idle-clock" id="idle-clock">00:00:00</div>
+  <div class="idle-date"  id="idle-date">---</div>
+
+  {% if config.show_weather %}
+  <div class="idle-wx" id="idle-wx">
+    <div class="idle-wx-main">
+      <div class="idle-wx-icon" id="wx-icon">&#9728;</div>
+      <div class="idle-wx-temp" id="wx-temp">--&deg;</div>
+      <div class="idle-wx-cond" id="wx-cond">Loading...</div>
+    </div>
+    <div class="idle-wx-details">
+      <div class="idle-wx-row">
+        <span class="idle-wx-lbl">Humidity</span>
+        <span class="idle-wx-val" id="wx-hum">--%</span>
+      </div>
+      <div class="idle-wx-row">
+        <span class="idle-wx-lbl">Wind</span>
+        <span class="idle-wx-val" id="wx-wind">-- mph</span>
+      </div>
+      <div class="idle-wx-row">
+        <span class="idle-wx-lbl">Hi / Lo</span>
+        <span class="idle-wx-val" id="wx-hilow">-- / --</span>
+      </div>
+    </div>
+    <div class="idle-wx-forecast" id="wx-forecast"></div>
+  </div>
+  {% endif %}
+
+</div>
+
+<!-- ════════════════════════════════ ALERT STATE ══════════════════════════ -->
+<div id="alert">
+  <div class="alert-eyebrow" id="alert-eyebrow">Dispatched</div>
+
+  <div class="alert-elapsed-row">
+    <span class="alert-elapsed-lbl">Elapsed</span>
+    <span class="alert-elapsed" id="alert-elapsed">00:00</span>
+  </div>
+
+  <div id="unit-stack"></div>
+
+  <div class="stack-window-row" id="stack-window-row">
+    <span class="stack-window-lbl">Stack window</span>
+    <div class="stack-window-track">
+      <div class="stack-window-fill" id="stack-fill"></div>
+    </div>
+    <span class="stack-window-val" id="stack-val">open</span>
+  </div>
+</div>
+
+<!-- Return-to-idle progress bar (always rendered, shown during alert) -->
+<div id="return-bar-wrap" style="display:none">
+  <div id="return-bar"></div>
+</div>
+
+<!-- Last alert + connection bar -->
+<div id="last-alert-bar">
+  <span class="last-alert-lbl">Last Alert</span>
+  <span class="last-alert-sep">&nbsp;&mdash;&nbsp;</span>
+  <span class="last-alert-info" id="last-alert-info">No alerts recorded</span>
+  <div id="conn-badge" class="disconnected">
+    <div id="conn-dot"></div>
+    <span id="conn-txt">connecting</span>
+  </div>
+  <span class="lts-credit">Lockwood Technology Solutions &nbsp;&bull;&nbsp; <a href="https://www.lockwood.tech" target="_blank" rel="noopener noreferrer">www.lockwood.tech</a></span>
+</div>
+
+<!-- SocketIO client — loaded from addon's own static files -->
+<script src="{{ script_root }}/static/js/socket.io.min.js"></script>
+<script>
+'use strict';
+
+const SCRIPT_ROOT = "{{ script_root }}";
+
+// ════════════════════════════════════════════════════════════════════════
+// CONFIG — injected by Flask via Jinja2 template variables
+// ════════════════════════════════════════════════════════════════════════
+const SA_CONFIG = {
+  dept_name:     '{{ config.dept_name | default("") }}',
+  has_logo:      {{ 'true' if config.has_logo else 'false' }},
+  station_name:  '{{ config.station_name | default("Station 1") }}',
+  tone_1_label:  '{{ config.tone_1_label | default("ENGINE 1") }}',
+  tone_2_label:  '{{ config.tone_2_label | default("MEDIC 1") }}',
+  stack_window:  {{ config.stack_window | default(60) }},
+  return_timeout:{{ config.return_timeout | default(45) }},
+  tone_1_sound:  '{{ config.tone_1_sound | default("engine.mp3") }}',
+  tone_2_sound:  '{{ config.tone_2_sound | default("medic.mp3") }}',
+  show_weather:  {{ config.show_weather | default(True) | tojson }},
+};
+
+// Apply show_weather setting immediately (element absent server-side when false; guard for safety)
+if (!SA_CONFIG.show_weather) {
+  const _wxEl = document.getElementById('idle-wx');
+  if (_wxEl) _wxEl.style.display = 'none';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// THEME TOGGLE
+// ════════════════════════════════════════════════════════════════════════
+function toggleTheme() {
+  const light = document.body.classList.toggle('light-mode');
+  localStorage.setItem('sa-theme', light ? 'light' : 'dark');
+}
+(function applyStoredTheme() {
+  if (localStorage.getItem('sa-theme') === 'light') {
+    document.body.classList.add('light-mode');
+  }
+})();
+
+// ════════════════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════════════════
+let isAlertActive    = false;
+let incidentStart    = null;
+let elapsedInterval  = null;
+let returnTimer      = null;
+let windowTimer      = null;
+let windowTickInterval = null;
+let windowElapsed    = 0;
+let windowOpen       = false;
+let alertStack       = [];
+let currentAlertPayload = null;
+let audioCtx         = null;
+let pendingAudio     = null;    // queued sound before user gesture
+
+// Weather refresh interval (5 min)
+let wxInterval = null;
+
+// Last alert state
+let lastAlertData = null;
+
+// ════════════════════════════════════════════════════════════════════════
+// CLOCK
+// ════════════════════════════════════════════════════════════════════════
+const DAYS        = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS      = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function pad(n) { return n < 10 ? '0'+n : ''+n; }
+
+function tickClock() {
+  const now = new Date();
+  document.getElementById('idle-clock').textContent =
+    pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+  document.getElementById('idle-date').textContent =
+    DAYS[now.getDay()] + ', ' + MONTHS_FULL[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ════════════════════════════════════════════════════════════════════════
+// WEATHER
+// ════════════════════════════════════════════════════════════════════════
+const WX_ICONS = {
+  'sunny':              '&#9728;',
+  'clear-night':        '&#127769;',
+  'partlycloudy':       '&#9925;',
+  'cloudy':             '&#9729;',
+  'fog':                '&#127787;',
+  'rainy':              '&#127783;',
+  'pouring':            '&#127783;',
+  'snowy':              '&#10052;',
+  'snowy-rainy':        '&#127783;',
+  'windy':              '&#127788;',
+  'windy-variant':      '&#127788;',
+  'hail':               '&#127783;',
+  'lightning':          '&#9928;',
+  'lightning-rainy':    '&#9928;',
+  'exceptional':        '&#9888;',
+};
+
+function wxIcon(condition) {
+  const key = (condition||'').toLowerCase().replace(/ /g, '-');
+  return WX_ICONS[key] || '&#9729;';
+}
+
+async function fetchWeather() {
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/weather', {signal: AbortSignal.timeout(8000)});
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.weather || !data.weather.available) return;
+    renderWeather(data.weather);
+  } catch(e) {
+    // Silent fail — weather is supplemental
+  }
+}
+
+function renderWeather(wx) {
+  const unit = wx.temperature_unit || '°F';
+  document.getElementById('wx-icon').innerHTML = wxIcon(wx.condition);
+  document.getElementById('wx-temp').innerHTML =
+    (wx.temperature !== null ? Math.round(wx.temperature) : '--') + '&deg;' + unit.replace('°','');
+  document.getElementById('wx-cond').textContent = formatCondition(wx.condition);
+  document.getElementById('wx-hum').textContent =
+    (wx.humidity !== null ? Math.round(wx.humidity) + '%' : '--%');
+  document.getElementById('wx-wind').textContent =
+    wx.wind_speed !== null
+      ? Math.round(wx.wind_speed) + ' ' + (wx.wind_speed_unit || 'mph') + windDir(wx.wind_bearing)
+      : '-- mph';
+  const _hilo = document.getElementById('wx-hilow');
+  if (_hilo) {
+    const _u  = unit.replace('\u00b0', '');
+    const _hi = (wx.temp_high != null) ? Math.round(wx.temp_high) + '\u00b0' + _u : '--';
+    const _lo = (wx.temp_low  != null) ? Math.round(wx.temp_low)  + '\u00b0' + _u : '--';
+    _hilo.textContent = _hi + ' / ' + _lo;
+  }
+
+  // Forecast strip
+  const fc = document.getElementById('wx-forecast');
+  fc.innerHTML = '';
+  (wx.forecast || []).slice(0, 4).forEach((h, i) => {
+    const div = document.createElement('div');
+    div.className = 'idle-wx-hr';
+    div.innerHTML = `
+      <div class="idle-wx-hr-t">${i === 0 ? 'NOW' : '+'+i+'HR'}</div>
+      <div class="idle-wx-hr-i">${wxIcon(h.condition)}</div>
+      <div class="idle-wx-hr-v">${h.temperature !== null ? Math.round(h.temperature) : '--'}&deg;</div>
+    `;
+    fc.appendChild(div);
+  });
+}
+
+function formatCondition(c) {
+  if (!c || c === 'unavailable') return 'Unavailable';
+  return c.replace(/-/g,' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function windDir(bearing) {
+  if (bearing === null || bearing === undefined) return '';
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return ' ' + dirs[Math.round(bearing/45) % 8];
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// ALERT STATE MACHINE
+// ════════════════════════════════════════════════════════════════════════
+
+function showAlert(payload) {
+  const { tone_id, unit_label, stack, timestamp, stack_open, alert_color } = payload;
+  currentAlertPayload = payload;
+  const color = alert_color || '#8b1a1a';
+  setAlertColor(color);
+
+  if (!isAlertActive) {
+    // First tone — enter alert state
+    isAlertActive   = true;
+    incidentStart   = Date.now();
+    alertStack      = stack || [{ label: unit_label, tone_id, time: timestamp, seq: 1, alert_color: color }];
+    startElapsedTimer();
+    enterAlertState();
+    playSound(tone_id);
+  } else {
+    // Additional unit stacked
+    alertStack = stack || alertStack;
+    setAlertColor(payload.alert_color || color);
+    stopReturnTimer(); // don't return while more may follow
+  }
+
+  renderStack();
+  updateEyebrow();
+
+  if (stack_open !== false) {
+    startWindowIndicator(payload.stack_window || SA_CONFIG.stack_window);
+  }
+}
+
+function showIdle() {
+  isAlertActive = false;
+  alertStack    = [];
+  stopElapsedTimer();
+  stopReturnTimer();
+  stopWindowIndicator();
+  exitAlertState();
+}
+
+function enterAlertState() {
+  document.getElementById('idle').classList.add('hidden');
+  document.getElementById('alert').classList.add('show');
+  document.getElementById('alert-border').classList.add('flash');
+  document.getElementById('return-bar-wrap').style.display = 'block';
+  document.getElementById('return-bar').style.width = '100%';
+}
+
+function exitAlertState() {
+  document.getElementById('alert').classList.remove('show');
+  document.getElementById('alert-border').classList.remove('flash');
+  document.getElementById('return-bar-wrap').style.display = 'none';
+  setTimeout(() => {
+    document.getElementById('idle').classList.remove('hidden');
+  }, 400);
+}
+
+function updateEyebrow() {
+  const n = alertStack.length;
+  document.getElementById('alert-eyebrow').textContent =
+    n <= 1 ? 'Dispatched' : n + ' Units Dispatched';
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// UNIT STACK RENDERER
+// ════════════════════════════════════════════════════════════════════════
+const UNIT_ICONS = {
+  engine:    '&#128657;',
+  eng:       '&#128657;',
+  medic:     '&#128657;',
+  med:       '&#128657;',
+  battalion: '&#9733;',
+  bat:       '&#9733;',
+  rescue:    '&#128657;',
+  default:   '&#128657;',
+};
+
+function unitIcon(label) {
+  const l = (label || '').toLowerCase();
+  for (const [key, icon] of Object.entries(UNIT_ICONS)) {
+    if (l.includes(key)) return icon;
+  }
+  return UNIT_ICONS.default;
+}
+
+function renderStack() {
+  const container = document.getElementById('unit-stack');
+  container.innerHTML = '';
+  const isMulti    = alertStack.length > 1;
+  const multiColor = (currentAlertPayload && currentAlertPayload.multi_unit_color) || '#1a4a8b';
+  alertStack.forEach((u, idx) => {
+    const color = isMulti ? multiColor : (u.alert_color || '#8b1a1a');
+    const card = document.createElement('div');
+    card.className = 'unit-card ' + (idx === 0 ? 'primary' : 'additional');
+    card.style.background   = hexToRgba(color, 0.18);
+    card.style.borderColor  = hexToRgba(color, 0.55);
+    card.innerHTML = `
+      <div class="unit-left">
+        <div class="unit-icon">${u.icon || unitIcon(u.label)}</div>
+        <div class="unit-name">${u.label || u.unit_label || ''}</div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// TIMERS
+// ════════════════════════════════════════════════════════════════════════
+
+function startElapsedTimer() {
+  stopElapsedTimer();
+  elapsedInterval = setInterval(() => {
+    if (!incidentStart) return;
+    const s = Math.floor((Date.now() - incidentStart) / 1000);
+    document.getElementById('alert-elapsed').textContent =
+      pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+  }, 1000);
+}
+
+function stopElapsedTimer() {
+  if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
+}
+
+function startWindowIndicator(windowSecs) {
+  stopWindowIndicator();
+  windowOpen    = true;
+  windowElapsed = 0;
+  const fill = document.getElementById('stack-fill');
+  fill.className = 'stack-window-fill';
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+  void fill.offsetWidth;
+  fill.style.transition = `width ${windowSecs}s linear`;
+  setTimeout(() => { fill.style.width = '0%'; }, 30);
+  document.getElementById('stack-val').textContent = 'open';
+  windowTickInterval = setInterval(() => {
+    windowElapsed++;
+    const rem = Math.max(0, windowSecs - windowElapsed);
+    if (rem > 0) {
+      document.getElementById('stack-val').textContent = rem + 's';
+    } else {
+      onWindowClosed();
+    }
+  }, 1000);
+}
+
+function onWindowClosed() {
+  stopWindowIndicator();
+  document.getElementById('stack-fill').className = 'stack-window-fill closed';
+  document.getElementById('stack-val').textContent = 'closed';
+  startReturnTimer();
+}
+
+function stopWindowIndicator() {
+  windowOpen = false;
+  if (windowTickInterval) { clearInterval(windowTickInterval); windowTickInterval = null; }
+}
+
+function startReturnTimer() {
+  stopReturnTimer();
+  const timeout = SA_CONFIG.return_timeout;
+  const bar = document.getElementById('return-bar');
+  bar.style.transition = 'none';
+  bar.style.width = '100%';
+  void bar.offsetWidth;
+  bar.style.transition = `width ${timeout}s linear`;
+  setTimeout(() => { bar.style.width = '0%'; }, 30);
+  returnTimer = setTimeout(() => { showIdle(); }, timeout * 1000);
+}
+
+function stopReturnTimer() {
+  if (returnTimer) { clearTimeout(returnTimer); returnTimer = null; }
+  const bar = document.getElementById('return-bar');
+  if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// COLOR HELPERS
+// ════════════════════════════════════════════════════════════════════════
+
+function hexToRgba(hex, alpha) {
+  const h = (hex || '#000000').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) || 0;
+  const g = parseInt(h.slice(2, 4), 16) || 0;
+  const b = parseInt(h.slice(4, 6), 16) || 0;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function setAlertColor(hex) {
+  const h = (hex || '#8b1a1a').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) || 139;
+  const g = parseInt(h.slice(2, 4), 16) || 26;
+  const b = parseInt(h.slice(4, 6), 16) || 26;
+  document.documentElement.style.setProperty('--alert-r', r);
+  document.documentElement.style.setProperty('--alert-g', g);
+  document.documentElement.style.setProperty('--alert-b', b);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// AUDIO
+// ════════════════════════════════════════════════════════════════════════
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  // Play any queued sound
+  if (pendingAudio) { playSound(pendingAudio); pendingAudio = null; }
+}
+
+function playSound(toneId) {
+  const soundFile = toneId === 'tone_1'
+    ? SA_CONFIG.tone_1_sound
+    : SA_CONFIG.tone_2_sound;
+  const url = `/local/station_assistant/sounds/${soundFile}`;
+
+  if (!audioCtx || audioCtx.state === 'suspended') {
+    // Queue it — will play after first user interaction
+    pendingAudio = toneId;
+    return;
+  }
+
+  fetch(url)
+    .then(r => r.arrayBuffer())
+    .then(buf => audioCtx.decodeAudioData(buf))
+    .then(decoded => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(audioCtx.destination);
+      src.start(0);
+    })
+    .catch(e => console.warn('Audio play failed:', e));
+}
+
+// Init audio context on first touch/click (browser autoplay policy)
+document.addEventListener('click',     initAudio, {once: true});
+document.addEventListener('touchstart', initAudio, {once: true});
+
+// ════════════════════════════════════════════════════════════════════════
+// SOCKETIO
+// ════════════════════════════════════════════════════════════════════════
+
+const socket = io({
+  path: '{{ script_root }}/socket.io',
+  reconnectionDelay:    2000,
+  reconnectionDelayMax: 10000,
+  transports: ['websocket', 'polling'],
+});
+
+socket.on('connect', () => {
+  setConnBadge('connected', 'live');
+  // Request fresh weather on connect
+  socket.emit('request_weather');
+});
+
+socket.on('disconnect', () => {
+  setConnBadge('disconnected', 'offline');
+});
+
+socket.on('reconnect_attempt', () => {
+  setConnBadge('disconnected', 'reconnecting');
+});
+
+// Receive station config on connect
+socket.on('config', (cfg) => {
+  if (cfg.station_name) {
+    document.getElementById('idle-station').textContent =
+      cfg.station_name.toUpperCase();
+    // Sync runtime config values
+    SA_CONFIG.stack_window    = cfg.stack_window    || SA_CONFIG.stack_window;
+    SA_CONFIG.return_timeout  = cfg.return_timeout  || SA_CONFIG.return_timeout;
+    SA_CONFIG.tone_1_sound    = cfg.tone_1_sound    || SA_CONFIG.tone_1_sound;
+    SA_CONFIG.tone_2_sound    = cfg.tone_2_sound    || SA_CONFIG.tone_2_sound;
+  }
+});
+
+// Receive decoded alert event
+socket.on('alert', (payload) => {
+  if (payload.event === 'idle') {
+    showIdle();
+    return;
+  }
+  // Track last alert in bottom bar
+  const alertLabel = (payload.stack && payload.stack[0])
+    ? payload.stack[0].label
+    : (payload.unit_label || 'Unknown');
+  updateLastAlertBar(alertLabel, payload.timestamp || new Date().toISOString());
+  showAlert(payload);
+});
+
+// Receive weather data pushed from server
+socket.on('weather', (wx) => {
+  if (wx && wx.available) renderWeather(wx);
+});
+
+function setConnBadge(state, txt) {
+  const badge   = document.getElementById('conn-badge');
+  const overlay = document.getElementById('offline-overlay');
+  badge.className = state;
+  document.getElementById('conn-txt').textContent = txt;
+  if (state === 'disconnected') {
+    overlay.classList.add('show');
+    // grey the whole page body
+    document.body.style.filter = 'grayscale(60%) brightness(0.7)';
+  } else {
+    overlay.classList.remove('show');
+    document.body.style.filter = '';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// WEATHER POLLING (fallback if socket weather isn't pushed)
+// ════════════════════════════════════════════════════════════════════════
+fetchWeather();
+wxInterval = setInterval(fetchWeather, 5 * 60 * 1000);
+
+// ════════════════════════════════════════════════════════════════════════
+// LAST ALERT BAR
+// ════════════════════════════════════════════════════════════════════════
+function updateLastAlertBar(label, ts) {
+  const el = document.getElementById('last-alert-info');
+  if (!el) return;
+  try {
+    let prefix = '';
+    if (ts) {
+      // Normalize "2026-03-28 21:05:46" → ISO, strip trailing Z-offset issues
+      const normalized = String(ts).trim().replace(' ', 'T');
+      const d = new Date(normalized);
+      if (!isNaN(d.getTime())) {
+        const mm = pad(d.getMonth() + 1);
+        const dd = pad(d.getDate());
+        const HH = pad(d.getHours());
+        const MM = pad(d.getMinutes());
+        prefix = mm + '/' + dd + '  ' + HH + ':' + MM + '  —  ';
+      } else {
+        // ts is a bare time string like "21:05:46" — display as-is
+        prefix = String(ts).slice(0, 8) + '  —  ';
+      }
+    }
+    el.textContent = prefix + (label || 'Unknown');
+    el.style.color = '#7aaec8';
+  } catch(e) {
+    el.textContent = (label || 'Unknown');
+  }
+}
+
+async function loadLastAlert() {
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/status');
+    const d = await r.json();
+    const dec = d.decoder || {};
+    const la = dec.last_alert;
+    const ld = d.last_detection;
+    if (la && la.label) {
+      updateLastAlertBar(la.label, la.time);
+    } else if (ld) {
+      updateLastAlertBar(
+        ld.seq_name || ld.name || 'Unknown',
+        ld.detected_at
+      );
+    }
+  } catch(e) { /* ignore */ }
+}
+
+loadLastAlert();
+
+// ════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════
+document.getElementById('idle-station').textContent =
+  (SA_CONFIG.station_name || 'Station 1').toUpperCase();
+</script>
+</body>
+</html>

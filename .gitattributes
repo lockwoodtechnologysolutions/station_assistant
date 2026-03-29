@@ -1,0 +1,12 @@
+# Normalize line endings to LF in the repo (Linux container target)
+* text=auto eol=lf
+
+# Binaries — no line ending conversion
+*.ico binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.mp3 binary
+*.wav binary
+*.ogg binary

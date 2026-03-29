@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Runtime data (generated at container runtime, not source)
+rootfs/data/
+*.db
+*.db-journal
+
+# Uploaded user files (sounds, logos) — not source-controlled
+rootfs/opt/station_assistant/sounds/*.mp3
+rootfs/opt/station_assistant/sounds/*.wav
+rootfs/opt/station_assistant/sounds/*.ogg
+rootfs/opt/station_assistant/static/uploads/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Build artifacts
+/build_info

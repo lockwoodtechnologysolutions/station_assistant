@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Station Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:      #060a0f;
+  --surface: #0c1520;
+  --panel:   #101d2a;
+  --border:  #1a2e40;
+  --text:    #cce0f0;
+  --muted:   #4a6880;
+  --accent:  #2a7fba;
+  --green2:  #3a9a6a;
+  --red2:    #c04040;
+  --yellow:  #c09020;
+  --display: 'Bebas Neue', 'Impact', sans-serif;
+  --mono:    'Courier New', 'Courier', monospace;
+  --sans:    'Segoe UI', 'Roboto', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+/* ── Department header ─────────────────────────────────────────────────────── */
+#dept-header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 70px;
+  background: rgba(6, 10, 15, 0.97);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  z-index: 100;
+}
+#dept-logo-wrap {
+  flex-shrink: 0;
+  width: 54px; height: 54px;
+  display: flex; align-items: center; justify-content: center;
+}
+#dept-logo-img { width: 54px; height: 54px; object-fit: contain; }
+#dept-logo-placeholder { font-size: 38px; line-height: 1; }
+#dept-name-text {
+  font-family: var(--display);
+  font-size: clamp(22px, 3vw, 40px);
+  letter-spacing: 3px;
+  color: #e8f4ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────── */
+#main {
+  margin-top: 70px;
+  padding: 28px 24px 56px;
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── Section label ────────────────────────────────────────────────────────── */
+.section-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 5px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  padding-top: 28px;
+}
+.section-lbl:first-child { padding-top: 8px; }
+
+/* ── Nav cards ────────────────────────────────────────────────────────────── */
+.nav-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media (max-width: 680px) { .nav-cards { grid-template-columns: 1fr; } }
+
+a.nav-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 26px 22px;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  transition: border-color 0.2s, background 0.2s;
+}
+a.nav-card:hover {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.nc-icon { font-size: 34px; line-height: 1; }
+.nc-label {
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: #d8eaf8;
+}
+.nc-desc {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ── Panel ────────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.panel-hdr {
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* ── Stat strip ───────────────────────────────────────────────────────────── */
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+}
+.stat-strip:last-child { border-bottom: none; }
+.stat-cell {
+  flex: 1 1 120px;
+  padding: 16px 20px;
+  border-right: 1px solid var(--border);
+}
+.stat-cell:last-child { border-right: none; }
+.stat-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stat-val {
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: #d8eaf8;
+}
+.stat-val.ok   { color: var(--green2); }
+.stat-val.warn { color: var(--yellow); }
+.stat-val.err  { color: var(--red2); }
+
+/* ── Sequence table ───────────────────────────────────────────────────────── */
+.seq-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.seq-table th {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 4px;
+  color: var(--muted);
+  text-transform: uppercase;
+  padding: 9px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.seq-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #0d1922;
+  font-size: 14px;
+  vertical-align: middle;
+}
+.seq-table tr:last-child td { border-bottom: none; }
+.seq-name {
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 2px;
+  color: #d8eaf8;
+}
+.seq-freq {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.badge.active   { background: rgba(58,154,106,0.12); color: var(--green2); border: 1px solid rgba(58,154,106,0.25); }
+.badge.disabled { background: rgba(74,104,128,0.12); color: var(--muted);  border: 1px solid var(--border); }
+
+/* ── Info/tip block ───────────────────────────────────────────────────────── */
+.tip-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(42,127,186,0.07);
+  border: 1px solid rgba(42,127,186,0.2);
+  border-radius: 6px;
+  font-size: 13px;
+  color: #6aaccc;
+  line-height: 1.6;
+}
+.tip-block .tip-icon { font-size: 18px; flex-shrink: 0; padding-top: 2px; }
+
+/* ── Danger zone ──────────────────────────────────────────────────────────── */
+.danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.danger-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.danger-desc strong { color: var(--text); }
+.danger-desc small  { font-size: 12px; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-danger {
+  background: rgba(192,64,64,0.12);
+  color: var(--red2);
+  border: 1px solid rgba(192,64,64,0.25);
+}
+.btn-danger:hover { background: rgba(192,64,64,0.28); }
+</style>
+</head>
+<body>
+
+<!-- Department header bar -->
+<div id="dept-header">
+  <div id="dept-logo-wrap">
+    {% if config.has_logo %}
+    <img id="dept-logo-img" src="{{ script_root }}/api/logo" alt="Logo">
+    {% else %}
+    <div id="dept-logo-placeholder">🚒</div>
+    {% endif %}
+  </div>
+  <div id="dept-name-text">{{ config.dept_name or 'Station Assistant' }}</div>
+</div>
+
+<div id="main">
+
+  <!-- ── Navigation cards ─────────────────────────────────────────────────── -->
+  <div class="section-lbl" style="padding-top:6px">Navigation</div>
+  <div class="nav-cards">
+
+    <a class="nav-card" href="{{ script_root }}/dashboard">
+      <div class="nc-icon">🚨</div>
+      <div class="nc-label">Alert Dashboard</div>
+      <div class="nc-desc">Live paging display<br>Kiosk / station screen</div>
+    </a>
+
+    <a class="nav-card" href="{{ script_root }}/settings">
+      <div class="nc-icon">⚙️</div>
+      <div class="nc-label">Settings</div>
+      <div class="nc-desc">Tones, labels, sounds<br>Weather &amp; timing</div>
+    </a>
+
+    <a class="nav-card" href="{{ script_root }}/status">
+      <div class="nc-icon">📡</div>
+      <div class="nc-label">System Status</div>
+      <div class="nc-desc">Decoder health, audio<br>Detection history</div>
+    </a>
+
+  </div>
+
+  <!-- ── Direct URL tip ───────────────────────────────────────────────────── -->
+  <div style="margin-top:12px">
+    <div class="tip-block">
+      <span class="tip-icon">ℹ️</span>
+      <span>
+        <strong>Kiosk / direct URL:</strong> The Alert Dashboard is also accessible at
+        <code style="background:rgba(0,0,0,0.3);padding:1px 6px;border-radius:3px;font-size:12px">
+          http://&lt;HA-IP&gt;:8099/dashboard
+        </code>
+        — no Home Assistant login required. Point an RPi kiosk browser directly to this URL.
+      </span>
+    </div>
+  </div>
+
+  <!-- ── System quick-stats ───────────────────────────────────────────────── -->
+  <div class="section-lbl">System</div>
+  <div class="panel">
+    <div class="stat-strip">
+      <div class="stat-cell">
+        <div class="stat-lbl">Station</div>
+        <div class="stat-val" style="font-size:18px;letter-spacing:1px">
+          {{ config.station_name or '—' }}
+        </div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Sequences</div>
+        <div class="stat-val">{{ sequences | length }}</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Decoder</div>
+        <div class="stat-val" id="dec-status">—</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">HA Connection</div>
+        <div class="stat-val" id="ha-status">—</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Uptime</div>
+        <div class="stat-val" id="uptime" style="font-size:16px;letter-spacing:1px">—</div>
+      </div>
+    </div>
+    <div class="stat-strip">
+      <div class="stat-cell" style="flex:3 1 300px">
+        <div class="stat-lbl">Last Alert</div>
+        <div id="last-alert" style="font-family:var(--mono);font-size:13px;color:#4a7898;letter-spacing:2px;margin-top:4px">No alerts recorded</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-lbl">Total Detections</div>
+        <div class="stat-val" id="total-det">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Configured paging sequences ─────────────────────────────────────── -->
+  <div class="section-lbl">Paging Sequences</div>
+  <div class="panel">
+    <table class="seq-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Unit / Label</th>
+          <th>Tone A</th>
+          <th>Tone B</th>
+          <th>Auto-Reset</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for seq in sequences %}
+        <tr>
+          <td style="color:var(--muted);font-family:var(--mono);font-size:12px">{{ loop.index }}</td>
+          <td><div class="seq-name">{{ seq.name }}</div></td>
+          <td><div class="seq-freq">{{ seq.tone1_hz }} Hz</div></td>
+          <td><div class="seq-freq">{{ seq.tone2_hz }} Hz</div></td>
+          <td><div class="seq-freq">{{ seq.auto_reset_seconds }}s</div></td>
+          <td>
+            {% if seq.enabled %}
+            <span class="badge active">Active</span>
+            {% else %}
+            <span class="badge disabled">Disabled</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;padding:28px;font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--muted)">
+            NO SEQUENCES — RUN SETTINGS TO CONFIGURE
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Media / automation info ──────────────────────────────────────────── -->
+  <div class="section-lbl">Home Assistant Integration</div>
+  <div class="panel">
+    <div class="panel-hdr">Automations Created</div>
+    {% for seq in sequences %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #0d1922">
+      <div>
+        <div style="font-family:var(--display);font-size:16px;letter-spacing:2px;color:#d8eaf8">{{ seq.name }}</div>
+        <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);margin-top:2px">
+          automation.{{ seq.ha_automation_id }}
+        </div>
+      </div>
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted)">
+        event: two_tone_decoded / {{ seq.slug }}
+      </div>
+    </div>
+    {% else %}
+    <div style="padding:20px 18px;font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--muted)">
+      NO AUTOMATIONS — COMPLETE SETUP FIRST
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Danger zone ───────────────────────────────────────────────────────── -->
+  <div class="section-lbl">Danger Zone</div>
+  <div class="panel">
+    <div class="danger-row">
+      <div class="danger-desc">
+        <strong>Reset Setup Wizard</strong><br>
+        <small>Clears the setup completion flag and returns to the first-run wizard.
+        Sequences, automations, and config are preserved — you'll just re-confirm settings.</small>
+      </div>
+      <button class="btn btn-danger" onclick="resetSetup()">⟳ Reset Setup</button>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+'use strict';
+const SCRIPT_ROOT = "{{ script_root }}";
+
+async function loadStatus() {
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    const dec = d.decoder || {};
+    const ha  = d.ha    || {};
+
+    // Decoder status
+    const decEl = document.getElementById('dec-status');
+    if (dec.running) {
+      decEl.textContent = 'Running'; decEl.className = 'stat-val ok';
+    } else if (dec.error) {
+      decEl.textContent = 'Error';   decEl.className = 'stat-val err';
+    } else {
+      decEl.textContent = 'Stopped'; decEl.className = 'stat-val warn';
+    }
+
+    // HA connection
+    const haEl = document.getElementById('ha-status');
+    haEl.textContent = ha.connected ? 'Connected' : 'Offline';
+    haEl.className   = 'stat-val ' + (ha.connected ? 'ok' : 'err');
+
+    // Uptime
+    const upEl = document.getElementById('uptime');
+    upEl.textContent = dec.uptime || '—';
+
+    // Total detections
+    const tdEl = document.getElementById('total-det');
+    tdEl.textContent = dec.total_detections !== undefined ? dec.total_detections : '—';
+
+    // Last alert
+    const laEl = document.getElementById('last-alert');
+    const la = dec.last_alert;
+    if (la && la.label) {
+      laEl.textContent = la.time + '  —  ' + la.label;
+      laEl.style.color = '#7aaec8';
+    }
+  } catch(e) { /* HA not reachable yet */ }
+}
+
+async function resetSetup() {
+  if (!confirm(
+    'Reset the setup wizard?\n\n' +
+    'Your sequences and automations are preserved.\n' +
+    'You will re-confirm your settings on the next page.'
+  )) return;
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/setup/reset', { method: 'POST' });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      window.location.href = SCRIPT_ROOT + '/setup';
+    } else {
+      alert('Reset failed: ' + (d.message || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Reset failed: ' + e.message);
+  }
+}
+
+loadStatus();
+setInterval(loadStatus, 15000);
+</script>
+</body>
+</html>

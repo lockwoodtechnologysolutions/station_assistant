@@ -1,0 +1,1076 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Station Assistant — Setup</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:       #07090c;
+    --surface:  #0c1018;
+    --border:   #1a2535;
+    --border2:  #243548;
+    --accent:   #1e6fa8;
+    --accent2:  #2a8fd4;
+    --green:    #1a7a4a;
+    --green2:   #22a362;
+    --red:      #8a2020;
+    --text:     #c8d8e8;
+    --muted:    #3a5068;
+    --label:    #5a8098;
+    --mono:     'Share Tech Mono', monospace;
+    --sans:     'Barlow', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    min-height: 100vh;
+    padding: 0 0 60px 0;
+  }
+
+  /* ── Header ── */
+  .sa-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .sa-logo {
+    width: 36px;
+    height: 36px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .sa-header-text h1 {
+    font-family: var(--mono);
+    font-size: 16px;
+    color: #e8f4ff;
+    letter-spacing: 2px;
+    font-weight: 400;
+  }
+  .sa-header-text p {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ── Progress bar ── */
+  .sa-progress {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    display: flex;
+    gap: 0;
+  }
+  .sa-step {
+    flex: 1;
+    padding: 12px 0 10px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    cursor: default;
+  }
+  .sa-step.active {
+    color: var(--accent2);
+    border-bottom-color: var(--accent2);
+  }
+  .sa-step.done {
+    color: var(--green2);
+    border-bottom-color: var(--green2);
+  }
+
+  /* ── Layout ── */
+  .sa-container {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* ── Panels (wizard steps) ── */
+  .sa-panel {
+    display: none;
+    animation: fadeIn 0.2s ease;
+  }
+  .sa-panel.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ── Section card ── */
+  .sa-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .sa-card-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--label);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sa-card-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Form fields ── */
+  .sa-field {
+    margin-bottom: 18px;
+  }
+  .sa-field:last-child { margin-bottom: 0; }
+  .sa-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--label);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 7px;
+  }
+  .sa-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    background: #080d12;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  /* Select arrow */
+  .sa-select-wrap {
+    position: relative;
+  }
+  .sa-select-wrap::after {
+    content: '▾';
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+    font-size: 12px;
+  }
+
+  /* Two-col row */
+  .sa-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 480px) { .sa-row { grid-template-columns: 1fr; } }
+
+  /* ── Tone pair ── */
+  .sa-tone-block {
+    background: #060a0e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .sa-tone-block:last-child { margin-bottom: 0; }
+  .sa-tone-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  /* ── Audio level meter ── */
+  .sa-level-wrap {
+    background: #060a0e;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .sa-level-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sa-level-val { color: var(--label); font-family: var(--mono); }
+  .sa-level-track {
+    height: 6px;
+    background: #0a1520;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .sa-level-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.1s ease, background 0.3s;
+  }
+  .sa-level-fill.warn  { background: #a07000; }
+  .sa-level-fill.clip  { background: var(--red); }
+  .sa-level-hint {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  /* ── Buttons ── */
+  .sa-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--label);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .sa-btn:hover { background: #0f1e2e; border-color: var(--accent); color: var(--accent2); }
+
+  .sa-btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #e8f4ff;
+    font-size: 13px;
+    padding: 12px 28px;
+    width: 100%;
+    justify-content: center;
+    margin-top: 8px;
+  }
+  .sa-btn-primary:hover { background: var(--accent2); border-color: var(--accent2); color: #fff; }
+  .sa-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .sa-btn-ghost {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .sa-btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+
+  .sa-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  /* ── Inline status ── */
+  .sa-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    padding: 8px 0;
+  }
+  .sa-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .sa-status.ok .sa-status-dot { background: var(--green2); }
+  .sa-status.ok { color: var(--green2); }
+  .sa-status.loading .sa-status-dot { background: var(--accent2); animation: blink 0.8s ease-in-out infinite; }
+  .sa-status.loading { color: var(--accent2); }
+  .sa-status.err .sa-status-dot { background: var(--red); }
+  .sa-status.err { color: #c04040; }
+  @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:1} }
+
+  /* ── Restart overlay ── */
+  #sa-restart {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(4,6,8,0.95);
+    z-index: 100;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+  }
+  #sa-restart.show { display: flex; }
+  .sa-restart-icon {
+    font-size: 48px;
+    animation: spin 2s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sa-restart-title {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: #e8f4ff;
+    letter-spacing: 3px;
+  }
+  .sa-restart-msg {
+    font-size: 13px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-align: center;
+    max-width: 360px;
+    line-height: 1.7;
+    text-transform: uppercase;
+  }
+  .sa-restart-bar-wrap {
+    width: 280px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .sa-restart-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    width: 0%;
+    animation: progress 90s linear forwards;
+  }
+  @keyframes progress { to { width: 95%; } }
+
+  /* ── Summary list ── */
+  .sa-summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .sa-summary-row:last-child { border-bottom: none; }
+  .sa-summary-key { color: var(--label); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; }
+  .sa-summary-val { color: var(--text); font-family: var(--mono); }
+
+  .sa-check { color: var(--green2); margin-right: 6px; }
+
+  /* ── Tone test pill ── */
+  .sa-play-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #0a1520;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--label);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 5px 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    margin-top: 8px;
+  }
+  .sa-play-btn:hover { border-color: var(--accent); color: var(--accent2); }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="sa-header">
+  <div class="sa-logo">🚒</div>
+  <div class="sa-header-text">
+    <h1>STATION ASSISTANT</h1>
+    <p>First-Run Setup Wizard</p>
+  </div>
+</div>
+
+<!-- Progress steps -->
+<div class="sa-progress" id="sa-progress">
+  <!-- Steps populated dynamically after sequence count is chosen -->
+</div>
+
+<div class="sa-container">
+
+  <!-- ═══════════════════════════════════════ STEP 1: Station Info -->
+  <div class="sa-panel active" id="panel-1">
+    <div class="sa-card">
+      <div class="sa-card-title">Station Information</div>
+      <div class="sa-field">
+        <label class="sa-label">Department Name</label>
+        <input type="text" id="dept_name" placeholder="e.g. Riverside Fire Department"
+               value="" autocomplete="off">
+        <div class="sa-hint">Full department name shown in the dashboard header.</div>
+      </div>
+      <div class="sa-field">
+        <label class="sa-label">Department Logo / Patch <span style="font-size:11px;color:var(--muted)">(optional)</span></label>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <label class="sa-btn" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;gap:6px">
+            &#128196; Choose File
+            <input type="file" id="logo-file" accept="image/png,image/webp,image/svg+xml,image/jpeg"
+                   style="display:none" onchange="uploadLogo(this)">
+          </label>
+          <span id="logo-status" style="font-family:var(--mono);font-size:12px;color:var(--muted)">No file selected</span>
+          <img id="logo-preview" src="" alt="" style="display:none;height:56px;width:56px;object-fit:contain;border-radius:8px;border:1px solid var(--border)">
+        </div>
+        <div class="sa-hint">PNG or WebP with transparent background. Square, 256&times;256px or larger ideal.</div>
+      </div>
+      <div class="sa-field">
+        <label class="sa-label">Station Name</label>
+        <input type="text" id="station_name" placeholder="e.g. Station 1 &mdash; League City Fire"
+               value="Station 1" autocomplete="off">
+        <div class="sa-hint">Displayed on the alert dashboard and HA helpers.</div>
+      </div>
+      <div class="sa-field">
+        <label class="sa-label">Weather Entity</label>
+        <div class="sa-select-wrap">
+          <select id="weather_entity">
+            <option value="">Loading weather integrations...</option>
+          </select>
+        </div>
+        <div class="sa-status loading" id="wx-status">
+          <div class="sa-status-dot"></div>
+          <span>Detecting HA weather integrations...</span>
+        </div>
+      </div>
+      <div class="sa-field">
+        <label class="sa-label">Number of Paging Sequences <span style="color:var(--muted);font-size:11px;font-weight:normal">(max 5)</span></label>
+        <div class="sa-select-wrap">
+          <select id="seq_count">
+            <option value="1">1 sequence</option>
+            <option value="2" selected>2 sequences</option>
+            <option value="3">3 sequences</option>
+            <option value="4">4 sequences</option>
+            <option value="5">5 sequences</option>
+          </select>
+        </div>
+        <div class="sa-hint">How many two-tone paging sequences do you want to configure in this wizard? Each sequence becomes one HA automation.</div>
+      </div>
+    </div>
+    <div class="sa-nav">
+      <div></div>
+      <button class="sa-btn sa-btn-primary" onclick="goStep(2)" style="width:auto;padding:12px 36px">
+        Next &rarr;
+      </button>
+    </div>
+  </div>
+
+  <!-- Tone panels generated dynamically by buildWizard() after user picks seq count -->
+  <div id="tone-panels-container"></div>
+
+  <!-- ═══════════════════════════════════════ STEP 4: Audio Input -->
+  <div class="sa-panel" id="panel-audio">
+    <div class="sa-card">
+      <div class="sa-card-title">Audio Input</div>
+      <div class="sa-field">
+        <label class="sa-label">Input Device</label>
+        <div class="sa-select-wrap">
+          <select id="audio_device">
+            <option value="">Loading audio devices...</option>
+          </select>
+        </div>
+        <div class="sa-status loading" id="audio-status">
+          <div class="sa-status-dot"></div>
+          <span>Detecting audio input devices...</span>
+        </div>
+        <div class="sa-hint">
+          Connect your radio audio output to a USB audio adapter line-in.
+          A Behringer UCA202 or similar USB adapter is recommended for reliable level.
+        </div>
+      </div>
+
+      <div class="sa-level-wrap" id="level-wrap">
+        <div class="sa-level-label">
+          <span>Input Level Monitor</span>
+          <span class="sa-level-val" id="level-val">— dBFS</span>
+        </div>
+        <div class="sa-level-track">
+          <div class="sa-level-fill" id="level-fill"></div>
+        </div>
+        <div class="sa-level-hint" id="level-hint">
+          Click "Monitor Level" to start measuring the audio input.
+          Target: –20 to –10 dBFS with radio audio present.
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="sa-btn" onclick="startLevelMonitor()" id="monitor-btn">
+          ▶ Monitor Level
+        </button>
+        <button class="sa-btn" onclick="stopLevelMonitor()" id="stop-monitor-btn" style="display:none">
+          ◼ Stop Monitor
+        </button>
+      </div>
+    </div>
+    <div class="sa-nav">
+      <button class="sa-btn sa-btn-ghost" onclick="goStep(seqCount + 1)">&larr; Back</button>
+      <button class="sa-btn sa-btn-primary" onclick="goStep(seqCount + 3)" style="width:auto;padding:12px 36px">
+        Next &rarr;
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════ STEP 5: Review & Activate -->
+  <div class="sa-panel" id="panel-review">
+    <div class="sa-card">
+      <div class="sa-card-title">Review Configuration</div>
+      <div id="summary-content">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+    <div class="sa-card">
+      <div class="sa-card-title">What Happens Next</div>
+      <div style="font-size:13px;color:var(--label);line-height:1.9">
+        <div><span class="sa-check">✓</span> Station config saved to <code style="color:var(--accent2)">/data/sa_config.json</code></div>
+        <div><span class="sa-check">✓</span> Paging sequences created in <code style="color:var(--accent2)">/data/sequences.json</code></div>
+        <div><span class="sa-check">✓</span> HA automations created via REST API with <code style="color:var(--accent2)">media_player.play_media</code> action steps pre-built</div>
+        <div><span class="sa-check">✓</span> Alert sounds copied to <code style="color:var(--accent2)">/config/www/station_assistant/sounds/</code> and HA Media Browser</div>
+        <div><span class="sa-check">✓</span> Tone decoder started &mdash; no HA restart needed</div>
+        <div><span class="sa-check">✓</span> Dashboard ready at <code style="color:var(--accent2)">http://&lt;HA-IP&gt;:8099/dashboard</code></div>
+      </div>
+    </div>
+    <div class="sa-nav">
+      <button class="sa-btn sa-btn-ghost" onclick="goStep(seqCount + 2)">&larr; Back</button>
+      <button class="sa-btn sa-btn-primary" onclick="activate()" id="activate-btn">
+        ✓ Activate Station Assistant
+      </button>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<!-- ── Restart overlay ── -->
+<div id="sa-restart">
+  <div class="sa-restart-icon">⟳</div>
+  <div class="sa-restart-title">SETTING UP STATION ASSISTANT</div>
+  <div class="sa-restart-msg" id="restart-msg">
+    Saving configuration and starting the tone decoder.
+    This takes just a moment.
+  </div>
+  <div class="sa-restart-bar-wrap">
+    <div class="sa-restart-bar"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const SCRIPT_ROOT = "{{ script_root }}";
+
+// ── State ────────────────────────────────────────────────────────────────────
+let currentStep  = 1;
+let seqCount     = 2;
+let TOTAL_STEPS  = 5;
+let levelInterval = null;
+let wizardBuilt   = false;
+let cachedSounds  = [];
+let cachedPlayers = [];
+
+// ── Panel element lookup ─────────────────────────────────────────────────────
+function getPanelEl(step) {
+  if (step === 1)                       return document.getElementById('panel-1');
+  if (step >= 2 && step <= seqCount+1)  return document.getElementById('panel-' + step);
+  if (step === seqCount + 2)            return document.getElementById('panel-audio');
+  if (step === seqCount + 3)            return document.getElementById('panel-review');
+  return null;
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function goStep(n) {
+  if (n > currentStep && !validateStep(currentStep)) return;
+
+  // Build wizard on first forward move from step 1
+  if (currentStep === 1 && n > 1 && !wizardBuilt) {
+    seqCount    = parseInt(document.getElementById('seq_count').value) || 2;
+    TOTAL_STEPS = seqCount + 3;
+    buildWizard();
+    wizardBuilt = true;
+  }
+
+  const curEl  = getPanelEl(currentStep);
+  const curTab = document.getElementById('step-tab-' + currentStep);
+  if (curEl)  curEl.classList.remove('active');
+  if (curTab) { curTab.classList.remove('active'); curTab.classList.add('done'); }
+
+  currentStep = n;
+
+  const nxtEl  = getPanelEl(currentStep);
+  const nxtTab = document.getElementById('step-tab-' + currentStep);
+  if (nxtEl)  nxtEl.classList.add('active');
+  if (nxtTab) { nxtTab.classList.remove('done'); nxtTab.classList.add('active'); }
+
+  if (currentStep === TOTAL_STEPS) buildSummary();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── Build wizard: progress tabs + N tone panels ──────────────────────────────
+function buildWizard() {
+  // Progress bar
+  const labels = ['Station'];
+  for (let i = 1; i <= seqCount; i++) labels.push('Tone ' + i);
+  labels.push('Audio', 'Review');
+  document.getElementById('sa-progress').innerHTML = labels.map(function(lbl, idx) {
+    return '<div class="sa-step ' + (idx === 0 ? 'active' : '') + '" id="step-tab-' + (idx+1) + '">' + lbl + '</div>';
+  }).join('');
+
+  // Default frequencies for common units
+  var dflts = [
+    {a:'688.8', b:'440.0', label:'ENGINE 1'},
+    {a:'712.0', b:'523.0', label:'MEDIC 1'},
+    {a:'756.0', b:'462.0', label:'LADDER 1'},
+    {a:'621.0', b:'508.0', label:'BATTALION 1'},
+    {a:'600.0', b:'420.0', label:'SQUAD 1'},
+    {a:'645.0', b:'480.0', label:'RESCUE 1'},
+    {a:'670.0', b:'500.0', label:'BRUSH 1'},
+    {a:'690.0', b:'530.0', label:'TANKER 1'},
+  ];
+
+  var container = document.getElementById('tone-panels-container');
+  container.innerHTML = '';
+
+  for (var i = 1; i <= seqCount; i++) {
+    var df   = dflts[i-1] || {a:'600.0', b:'400.0', label:'SEQUENCE ' + i};
+    var sNum = i + 1;   // step number for this tone panel
+    var back = sNum - 1;
+    var next = sNum + 1;
+    var isLast = (i === seqCount);
+    var tIdx = i;  // capture for closure
+
+    var div = document.createElement('div');
+    div.className = 'sa-panel';
+    div.id = 'panel-' + sNum;
+
+    var stackingHtml = ''; // Stack Window / Return Timeout moved to Settings → Stacking & Timing
+
+    div.innerHTML = [
+      '<div class="sa-card">',
+      '  <div class="sa-card-title">Tone Sequence ' + i + '</div>',
+      '  <div class="sa-tone-block">',
+      '    <div class="sa-tone-num">Sequence ' + i + ' of ' + seqCount + '</div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">Unit Label</label>',
+      '      <input type="text" id="tone_' + i + '_label" placeholder="' + df.label + '" value="' + df.label + '">',
+      '      <div class="sa-hint">Shown on the alert board when this tone is decoded.</div>',
+      '    </div>',
+      '    <div class="sa-row">',
+      '      <div class="sa-field">',
+      '        <label class="sa-label">Tone A Frequency (Hz)</label>',
+      '        <input type="number" id="tone_' + i + '_freq_a" value="' + df.a + '" step="0.1" min="300" max="3000">',
+      '      </div>',
+      '      <div class="sa-field">',
+      '        <label class="sa-label">Tone B Frequency (Hz)</label>',
+      '        <input type="number" id="tone_' + i + '_freq_b" value="' + df.b + '" step="0.1" min="300" max="3000">',
+      '      </div>',
+      '    </div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">Ramp Up Alert Tone <span style="color:var(--accent2);font-size:9px;margin-left:6px">REQUIRED</span></label>',
+      '      <div style="display:flex;gap:8px;align-items:stretch">',
+      '        <div class="sa-select-wrap" style="flex:1">',
+      '          <select id="tone_' + i + '_sound_1"><option value="">Loading&hellip;</option></select>',
+      '        </div>',
+      '        <label class="sa-btn" style="cursor:pointer;margin:0;padding:0 14px;flex-shrink:0;display:flex;align-items:center;gap:6px">',
+      '          <span>&uarr; Upload</span>',
+      '          <input type="file" accept="audio/mpeg,.mp3" style="display:none" onchange="uploadSound(this,\'tone_' + i + '_sound_1\')">',
+      '        </label>',
+      '      </div>',
+      '    </div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">Apparatus/Assignment Tone 1 <span style="color:var(--muted);font-size:9px">OPTIONAL</span></label>',
+      '      <div class="sa-select-wrap">',
+      '        <select id="tone_' + i + '_sound_2"><option value="">(none &mdash; skip)</option></select>',
+      '      </div>',
+      '    </div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">Apparatus/Assignment Tone 2 <span style="color:var(--muted);font-size:9px">OPTIONAL</span></label>',
+      '      <div class="sa-select-wrap">',
+      '        <select id="tone_' + i + '_sound_3"><option value="">(none &mdash; skip)</option></select>',
+      '      </div>',
+      '    </div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">HA Media Player</label>',
+      '      <div class="sa-select-wrap">',
+      '        <select id="tone_' + i + '_media_player"><option value="">Loading&hellip;</option></select>',
+      '      </div>',
+      '      <div class="sa-hint">Sounds play on this <code>media_player</code> entity. Automation action block is pre-built.</div>',
+      '    </div>',
+      '    <div class="sa-field">',
+      '      <label class="sa-label">Return to Idle After</label>',
+      '      <div class="sa-select-wrap">',
+      '        <select id="tone_' + i + '_timeout">',
+      '          <option value="30">30 seconds</option>',
+      '          <option value="45">45 seconds</option>',
+      '          <option value="60" selected>60 seconds</option>',
+      '          <option value="90">90 seconds</option>',
+      '          <option value="120">2 minutes</option>',
+      '          <option value="180">3 minutes</option>',
+      '          <option value="300">5 minutes</option>',
+      '        </select>',
+      '      </div>',
+      '    </div>',
+      '  </div>',
+      stackingHtml,
+      '</div>',
+      '<div class="sa-nav">',
+      '  <button class="sa-btn sa-btn-ghost" onclick="goStep(' + back + ')">&larr; Back</button>',
+      '  <button class="sa-btn sa-btn-primary" onclick="goStep(' + next + ')" style="width:auto;padding:12px 36px">Next &rarr;</button>',
+      '</div>'
+    ].join('\n');
+    container.appendChild(div);
+  }
+  applySoundsAndPlayers();
+}
+
+async function applySoundsAndPlayers() {
+  try {
+    if (!cachedSounds.length) {
+      var sr = await fetch(SCRIPT_ROOT + '/api/setup/sounds');
+      cachedSounds = ((await sr.json()).sounds || []);
+    }
+    if (!cachedPlayers.length) {
+      var pr = await fetch(SCRIPT_ROOT + '/api/setup/media_players');
+      cachedPlayers = ((await pr.json()).entities || []);
+    }
+  } catch(e) { console.warn('applySoundsAndPlayers:', e); }
+  fillAllSelects();
+}
+
+function fillAllSelects() {
+  var dfltSounds = ['engine.mp3','medic.mp3','alert.mp3','tones.mp3','ladder.mp3','battalion.mp3','squad.mp3','tanker.mp3'];
+  function niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); }); }
+  for (var i = 1; i <= seqCount; i++) {
+    var dflt = dfltSounds[i-1] || '';
+    var s1   = document.getElementById('tone_' + i + '_sound_1');
+    if (s1) {
+      var cur = s1.value;
+      s1.innerHTML = '';
+      cachedSounds.forEach(function(fn) {
+        var o = document.createElement('option');
+        o.value = fn; o.textContent = niceName(fn);
+        if (fn === (cur || dflt)) o.selected = true;
+        s1.appendChild(o);
+      });
+    }
+    ['2','3'].forEach(function(slot) {
+      var sel = document.getElementById('tone_' + i + '_sound_' + slot);
+      if (!sel) return;
+      var cur2 = sel.value;
+      sel.innerHTML = '<option value="">(none &mdash; skip)</option>';
+      cachedSounds.forEach(function(fn) {
+        var o = document.createElement('option'); o.value=fn; o.textContent=niceName(fn);
+        if (fn===cur2) o.selected=true; sel.appendChild(o);
+      });
+    });
+    var mp = document.getElementById('tone_' + i + '_media_player');
+    if (mp) {
+      var curMp = mp.value;
+      mp.innerHTML = '<option value="">(none \u2014 no auto-playback)</option>';
+      cachedPlayers.forEach(function(e) {
+        var o = document.createElement('option'); o.value=e.entity_id;
+        o.textContent= e.friendly_name + '  (' + e.entity_id + ')';
+        if (e.entity_id===curMp) o.selected=true; mp.appendChild(o);
+      });
+    }
+  }
+}
+
+// ── Validation ───────────────────────────────────────────────────────────────
+function validateStep(n) {
+  if (n === 1) {
+    if (!v('station_name').trim()) { flash('station_name'); return false; }
+  }
+  var ti = n - 1;
+  if (ti >= 1 && ti <= seqCount) {
+    if (!v('tone_' + ti + '_label').trim()) { flash('tone_' + ti + '_label'); return false; }
+    if (!v('tone_' + ti + '_freq_a'))       { flash('tone_' + ti + '_freq_a'); return false; }
+    if (!v('tone_' + ti + '_freq_b'))       { flash('tone_' + ti + '_freq_b'); return false; }
+    if (!v('tone_' + ti + '_sound_1'))      { flash('tone_' + ti + '_sound_1'); return false; }
+  }
+  if (n === seqCount + 2) {
+    if (!v('audio_device')) { flash('audio_device'); return false; }
+  }
+  return true;
+}
+
+function v(id)    { var el = document.getElementById(id); return el ? el.value || '' : ''; }
+function flash(id) {
+  var el = document.getElementById(id); if (!el) return;
+  el.style.borderColor = '#8a2020'; el.focus();
+  setTimeout(function() { el.style.borderColor = ''; }, 2000);
+}
+
+// ── Weather entities ─────────────────────────────────────────────────────────
+async function loadWeatherEntities() {
+  var sel = document.getElementById('weather_entity');
+  var st  = document.getElementById('wx-status');
+  try {
+    var data = await fetch(SCRIPT_ROOT + '/api/setup/weather_entities').then(function(r){ return r.json(); });
+    sel.innerHTML = '';
+    if (data.entities && data.entities.length) {
+      data.entities.forEach(function(e) {
+        var o = document.createElement('option');
+        o.value=e.entity_id; o.textContent=e.friendly_name + ' (' + e.entity_id + ')'; sel.appendChild(o);
+      });
+      setStatus(st,'ok', data.entities.length + ' weather integration' + (data.entities.length>1?'s':'') + ' found');
+    } else {
+      sel.innerHTML='<option value="weather.home">weather.home (default)</option>';
+      setStatus(st,'err','No weather integrations found \u2014 optional');
+    }
+  } catch(e) {
+    sel.innerHTML='<option value="weather.home">weather.home (default)</option>';
+    setStatus(st,'err','Could not reach HA \u2014 using default');
+  }
+}
+
+// ── Audio devices ────────────────────────────────────────────────────────────
+async function loadAudioDevices() {
+  var sel = document.getElementById('audio_device');
+  var st  = document.getElementById('audio-status');
+  try {
+    var data = await fetch(SCRIPT_ROOT + '/api/setup/audio_devices').then(function(r){ return r.json(); });
+    sel.innerHTML = '';
+    if (data.devices && data.devices.length) {
+      data.devices.forEach(function(d) {
+        var o=document.createElement('option'); o.value=d.id;
+        o.textContent=d.name + ' (' + d.id + ')'; sel.appendChild(o);
+      });
+      var usb = data.devices.find(function(d) {
+        return d.name.toLowerCase().includes('usb') ||
+               d.name.toLowerCase().includes('behringer') ||
+               d.name.toLowerCase().includes('scarlett');
+      });
+      if (usb) sel.value=usb.id;
+      setStatus(st,'ok', data.devices.length + ' input device' + (data.devices.length>1?'s':'') + ' found');
+    } else {
+      sel.innerHTML='<option value="default">Default Input Device</option>';
+      setStatus(st,'err','No audio input devices found \u2014 connect a USB adapter');
+    }
+  } catch(e) {
+    sel.innerHTML='<option value="default">Default Input Device</option>';
+    setStatus(st,'err','Could not enumerate audio devices');
+  }
+}
+
+// ── Level monitor ────────────────────────────────────────────────────────────
+function startLevelMonitor() {
+  document.getElementById('monitor-btn').style.display = 'none';
+  document.getElementById('stop-monitor-btn').style.display = 'inline-flex';
+  levelInterval = setInterval(async function() {
+    try {
+      var d = await fetch(SCRIPT_ROOT + '/api/audio/level').then(function(r){ return r.json(); });
+      updateLevel(d.level_dbfs);
+    } catch(e){}
+  }, 150);
+}
+function stopLevelMonitor() {
+  clearInterval(levelInterval); levelInterval=null;
+  document.getElementById('monitor-btn').style.display = 'inline-flex';
+  document.getElementById('stop-monitor-btn').style.display = 'none';
+}
+function updateLevel(dbfs) {
+  var fill = document.getElementById('level-fill');
+  var val  = document.getElementById('level-val');
+  var hint = document.getElementById('level-hint');
+  fill.style.width = Math.max(0, Math.min(100, (dbfs+60)/60*100)) + '%';
+  fill.className = 'sa-level-fill' + (dbfs>-6 ? ' clip' : dbfs>-12 ? ' warn' : '');
+  val.textContent  = dbfs.toFixed(1) + ' dBFS';
+  if (dbfs < -40)     hint.textContent = 'Level too low \u2014 check audio connection.';
+  else if (dbfs > -6) hint.textContent = '\u26a0 Too high \u2014 reduce radio volume.';
+  else if (dbfs > -20)hint.textContent = '\u2713 Good level \u2014 optimal range.';
+  else                hint.textContent = 'Acceptable \u2014 try increasing radio volume.';
+}
+
+// ── Summary ──────────────────────────────────────────────────────────────────
+function buildSummary() {
+  var wx = document.getElementById('weather_entity');
+  var ad = document.getElementById('audio_device');
+  var rows = [
+    ['Department',   v('dept_name') || '(not set)'],
+    ['Station Name', v('station_name')],
+    ['Weather',      wx && wx.options[wx.selectedIndex] ? wx.options[wx.selectedIndex].text : '(not set)'],
+    ['Sequences',    String(seqCount)],
+  ];
+  for (var i=1; i<=seqCount; i++) {
+    var sounds = [v('tone_'+i+'_sound_1'), v('tone_'+i+'_sound_2'), v('tone_'+i+'_sound_3')].filter(Boolean).join(' \u2192 ');
+    rows.push(
+      ['Tone ' + i + ' Label',  v('tone_' + i + '_label')],
+      ['Tone ' + i + ' Freqs',  v('tone_' + i + '_freq_a') + ' / ' + v('tone_' + i + '_freq_b') + ' Hz'],
+      ['Tone ' + i + ' Sounds', sounds || '(none)'],
+      ['Tone ' + i + ' Player', v('tone_' + i + '_media_player') || '(none)']
+    );
+  }
+  if (ad) rows.push(['Audio Device',   ad.options[ad.selectedIndex] ? ad.options[ad.selectedIndex].text : '(not selected)']);
+  document.getElementById('summary-content').innerHTML = rows.map(function(r) {
+    return '<div class="sa-summary-row"><span class="sa-summary-key">' + r[0] + '</span><span class="sa-summary-val">' + r[1] + '</span></div>';
+  }).join('');
+}
+
+// ── Activate ─────────────────────────────────────────────────────────────────
+async function activate() {
+  var btn = document.getElementById('activate-btn');
+  btn.disabled = true; btn.textContent = 'Activating\u2026';
+  var tones = [];
+  for (var i=1; i<=seqCount; i++) {
+    tones.push({
+      label:        v('tone_' + i + '_label'),
+      freq_a:       parseFloat(v('tone_' + i + '_freq_a')),
+      freq_b:       parseFloat(v('tone_' + i + '_freq_b')),
+      sound_1:      v('tone_' + i + '_sound_1'),
+      sound_2:      v('tone_' + i + '_sound_2'),
+      sound_3:      v('tone_' + i + '_sound_3'),
+      media_player: v('tone_' + i + '_media_player'),
+      timeout:      parseInt(v('tone_' + i + '_timeout')) || 60,
+    });
+  }
+  var config = {
+    dept_name:      v('dept_name'),
+    station_name:   v('station_name'),
+    weather_entity: v('weather_entity'),
+    audio_device:   v('audio_device'),
+    tones: tones,
+  };
+  try {
+    var r    = await fetch(SCRIPT_ROOT + '/api/setup/activate', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config)
+    });
+    var data = await r.json();
+    if (data.status === 'ok') { showRestart(); }
+    else {
+      alert('Activation failed: ' + (data.message || 'Unknown error'));
+      btn.disabled=false; btn.textContent='\u2713 Activate Station Assistant';
+    }
+  } catch(e) { showRestart(); }
+}
+
+function showRestart() {
+  stopLevelMonitor();
+  document.getElementById('sa-restart').classList.add('show');
+  var attempts = 0;
+  var iv = setInterval(async function() {
+    attempts++;
+    try {
+      var r = await fetch(SCRIPT_ROOT + '/api/health', {signal: AbortSignal.timeout(3000)});
+      if (r.ok) {
+        var d = await r.json();
+        if (d.setup_complete) {
+          clearInterval(iv);
+          document.getElementById('restart-msg').textContent = 'Setup complete! Loading\u2026';
+          setTimeout(function() { window.location.href = SCRIPT_ROOT + '/'; }, 1500);
+          return;
+        }
+      }
+    } catch(e){}
+    if (attempts >= 60) { clearInterval(iv); document.getElementById('restart-msg').textContent = 'Try refreshing.'; }
+  }, 3000);
+}
+
+// ── Logo upload ──────────────────────────────────────────────────────────────
+async function uploadLogo(input) {
+  var file = input.files[0]; if (!file) return;
+  var st = document.getElementById('logo-status');
+  var pv = document.getElementById('logo-preview');
+  var fd = new FormData(); fd.append('logo', file);
+  st.textContent = 'Uploading\u2026';
+  try {
+    var d = await fetch(SCRIPT_ROOT + '/api/setup/upload_logo', {method:'POST', body:fd}).then(function(r){ return r.json(); });
+    if (d.status === 'ok') {
+      st.textContent = '\u2713 Logo saved';
+      pv.src = SCRIPT_ROOT + '/api/logo?t=' + Date.now();
+      pv.style.display = 'inline';
+    } else { st.textContent = d.message || 'Failed'; }
+  } catch(e) { st.textContent = 'Upload error'; }
+  input.value = '';
+}
+
+// ── Sound upload ─────────────────────────────────────────────────────────────
+async function uploadSound(input, targetId) {
+  var file = input.files[0]; if (!file) return;
+  var lbl = input.parentElement;
+  var sp  = lbl.querySelector('span');
+  var orig = sp ? sp.textContent : '';
+  if (sp) sp.textContent = ' Uploading\u2026';
+  try {
+    var fd = new FormData(); fd.append('sound', file);
+    var d  = await fetch(SCRIPT_ROOT + '/api/setup/upload_sound', {method:'POST', body:fd}).then(function(r){ return r.json(); });
+    if (d.status === 'ok') {
+      cachedSounds = [];
+      var sr = await fetch(SCRIPT_ROOT + '/api/setup/sounds').then(function(r){ return r.json(); });
+      cachedSounds = sr.sounds || [];
+      fillAllSelects();
+      var sel = document.getElementById(targetId); if (sel) sel.value = d.filename;
+      if (sp) sp.textContent = '\u2713 Uploaded';
+      setTimeout(function() { if (sp) sp.textContent = orig; }, 2500);
+    } else { alert(d.message || 'Failed'); if (sp) sp.textContent = orig; }
+  } catch(e) { alert(e.message); if (sp) sp.textContent = orig; }
+  input.value = '';
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function setStatus(el, type, msg) {
+  el.className = 'sa-status ' + type;
+  el.querySelector('span').textContent = msg;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  loadWeatherEntities();
+  loadAudioDevices();
+  // Pre-fetch sounds + players in background so buildWizard() is instant
+  fetch(SCRIPT_ROOT + '/api/setup/sounds').then(function(r){ return r.json(); }).then(function(d){ cachedSounds = d.sounds || []; }).catch(function(){});
+  fetch(SCRIPT_ROOT + '/api/setup/media_players').then(function(r){ return r.json(); }).then(function(d){ cachedPlayers = d.entities || []; }).catch(function(){});
+  // Show stub progress bar until user picks sequence count
+  document.getElementById('sa-progress').innerHTML =
+    '<div class="sa-step active" id="step-tab-1">Station</div>' +
+    '<div class="sa-step" style="color:var(--muted);font-style:italic">Choose sequence count to continue\u2026</div>';
+});
+</script>
+<footer style="position:fixed;bottom:0;left:0;right:0;height:24px;background:rgba(22,25,32,.95);border-top:1px solid rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;gap:6px;font-size:10px;color:rgba(138,144,158,.8);letter-spacing:.02em;z-index:9999">
+  Lockwood Technology Solutions
+  <span style="opacity:.4">&bull;</span>
+  <a href="https://www.lockwood.tech" target="_blank" rel="noopener noreferrer" style="color:#4a9eca;text-decoration:none">www.lockwood.tech</a>
+</footer>
+</body>
+</html>
+

@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Station Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0e1014;
+      --surface:  #161920;
+      --surface2: #1d2028;
+      --border:   #272b35;
+      --text:     #dde1ea;
+      --text2:    #8a909e;
+      --accent:   #d44e3a;
+      --accent2:  #4a9eca;
+      --success:  #3db87d;
+      --warn:     #e8a747;
+      --danger:   #c0392b;
+      --mono:     'Consolas', 'JetBrains Mono', monospace;
+      --radius:   6px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5; padding-bottom: 32px; }
+    code { font-family: var(--mono); font-size: 11px; color: var(--accent2); background: rgba(74,158,202,.1); padding: 1px 5px; border-radius: 3px; }
+
+    /* ── Footer ── */
+    .app-footer { position: fixed; bottom: 0; left: 0; right: 0; height: 24px; background: var(--surface); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; color: var(--text2); z-index: 200; letter-spacing: .02em; }
+    .app-footer a { color: var(--accent2); text-decoration: none; }
+    .app-footer a:hover { text-decoration: underline; }
+
+    /* ── Header ── */
+    .app-header { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 52px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .header-icon { font-size: 22px; }
+    .header-title { font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+    .header-version { font-size: 11px; color: var(--text2); font-family: var(--mono); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .header-dash-link { font-size: 12px; padding: 5px 12px; border-radius: var(--radius); background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+    .header-dash-link:hover { opacity: .85; }
+
+    /* ── Badge ── */
+    .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; font-family: var(--mono); }
+    .badge-ok   { background: rgba(61,184,125,.15); color: var(--success); border: 1px solid rgba(61,184,125,.3); }
+    .badge-err  { background: rgba(192,57,43,.15);  color: var(--danger);  border: 1px solid rgba(192,57,43,.3); }
+    .badge-warn { background: rgba(232,167,71,.15); color: var(--warn);    border: 1px solid rgba(232,167,71,.3); }
+    .badge-unknown { background: rgba(138,144,158,.12); color: var(--text2); border: 1px solid var(--border); }
+
+    /* ── Tab nav ── */
+    .tab-nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; overflow-x: auto; }
+    .tab-btn { display: flex; align-items: center; gap: 6px; padding: 12px 16px; cursor: pointer; border: none; background: none; color: var(--text2); font-size: 13px; font-weight: 500; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-count { background: var(--surface2); color: var(--text2); font-size: 10px; padding: 1px 6px; border-radius: 10px; font-family: var(--mono); min-width: 18px; text-align: center; }
+    .tab-btn.active .tab-count { background: rgba(212,78,58,.2); color: var(--accent); }
+
+    /* ── Tab content ── */
+    .tab-content { display: none; padding: 20px; max-width: 1400px; }
+    .tab-content.active { display: block; }
+
+    /* ── Toolbar ── */
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .toolbar h2 { font-size: 16px; font-weight: 600; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--surface2); color: var(--text); border-color: var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger-outline { background: transparent; color: var(--danger); border-color: var(--danger); }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn-icon { padding: 5px 8px; background: var(--surface2); border-color: var(--border); }
+
+    /* ── Data table ── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); background: var(--surface); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .data-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table tbody tr:hover td { background: var(--surface2); }
+    .mono { font-family: var(--mono); font-size: 12px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 11px; font-weight: 600; }
+    .pill-on  { background: rgba(61,184,125,.15); color: var(--success); }
+    .pill-off { background: rgba(138,144,158,.12); color: var(--text2); }
+
+    /* ── Empty state ── */
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .empty-sub { color: var(--text2); margin-bottom: 20px; }
+
+    /* ── Modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; width: 100%; max-width: 580px; max-height: 92vh; display: flex; flex-direction: column; }
+    .modal-sm { max-width: 420px; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-header h3 { font-size: 15px; font-weight: 600; }
+    .modal-close { background: none; border: none; color: var(--text2); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; }
+    .modal-close:hover { color: var(--text); background: var(--surface2); }
+    .modal-body { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+    .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+
+    /* ── Forms ── */
+    .form-row { display: flex; flex-direction: column; gap: 5px; }
+    .form-row label { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }
+    .form-row input, .form-row select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 10px; font-size: 13px; font-family: inherit; width: 100%; transition: border-color .15s; }
+    .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent2); }
+    .form-hint { font-size: 11px; color: var(--text2); }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .label-hint { font-weight: 400; color: var(--text2); }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+    .checkbox-label input { width: auto; }
+    .warning-box { background: rgba(232,167,71,.1); border: 1px solid rgba(232,167,71,.3); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--warn); }
+    .error-box   { background: rgba(192,57,43,.1);  border: 1px solid rgba(192,57,43,.3);  border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: #e07060; }
+    .info-box    { background: rgba(74,158,202,.1);  border: 1px solid rgba(74,158,202,.3);  border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--accent2); }
+
+    /* ── Sound upload row ── */
+    .sound-row { display: flex; gap: 8px; align-items: stretch; }
+    .sound-row select { flex: 1; }
+    .upload-label { display: flex; align-items: center; cursor: pointer; padding: 7px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--text); white-space: nowrap; transition: border-color .15s; }
+    .upload-label:hover { border-color: var(--accent2); }
+
+    /* ── Monitor ── */
+    .monitor-row-1 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: stretch; }
+    .monitor-row-2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; align-items: stretch; }
+    .monitor-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+    .monitor-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text2); margin-bottom: 10px; }
+    .level-wrap { position: relative; }
+    .level-db-text { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 11px; color: var(--text2); background: var(--surface); padding: 0 4px; pointer-events: none; }
+    .goertzel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+    .goertzel-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+    .goertzel-name { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+    .gz-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .gz-lbl { font-size: 11px; font-family: var(--mono); color: var(--text2); width: 70px; flex-shrink: 0; }
+    .gz-track { flex: 1; height: 10px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+    .gz-fill { height: 100%; border-radius: 2px; background: var(--accent2); transition: width .12s; }
+    .gz-val { font-size: 11px; font-family: var(--mono); color: var(--text2); width: 36px; text-align: right; }
+    .seq-led {
+      display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+      background: #2a2e38; border: 1px solid #3a3f4d;
+      box-shadow: none;
+      transition: background 0.2s, box-shadow 0.2s;
+      flex-shrink: 0;
+    }
+    .seq-led.active {
+      background: #3ddc84;
+      border-color: #3ddc84;
+      box-shadow: 0 0 8px 3px rgba(61,220,132,0.75), 0 0 2px 1px rgba(61,220,132,0.9);
+    }
+
+    /* ── Settings ── */
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .settings-card-wide { grid-column: 1 / -1; }
+    .settings-card-tall  { grid-row: span 2; align-self: start; }
+    .settings-card h3 { font-size: 14px; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 2px; }
+    .settings-note { font-size: 12px; color: var(--text2); line-height: 1.5; }
+    .danger-zone { border-color: rgba(192,57,43,.3) !important; }
+    .danger-zone h3 { color: var(--danger); }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 18px; font-size: 13px; z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,.4); max-width: 360px; }
+    .toast-ok  { border-color: rgba(61,184,125,.4);  color: var(--success); }
+    .toast-err { border-color: rgba(192,57,43,.4);   color: #e07060; }
+    .toast-warn{ border-color: rgba(232,167,71,.4);  color: var(--warn); }
+
+    @media (max-width: 768px) {
+      .monitor-row-1, .monitor-row-2 { grid-template-columns: 1fr; }
+      .form-grid-2 { grid-template-columns: 1fr; }
+      .settings-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ Header ═══════════════════════════════════════════════════════════════ -->
+<header class="app-header">
+  <div class="header-left">
+    <img src="{{ script_root }}/static/icon.png" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:6px;">
+    <span class="header-title">Station Assistant</span>
+    <span class="header-version">v{{ app_version }}</span>
+  </div>
+  <div class="header-right">
+    <a class="header-dash-link" id="dash-link" href="#">🖥 Alert Board</a>
+    <span id="ha-badge"  class="badge badge-unknown">HA: Checking…</span>
+    <span id="dec-badge" class="badge badge-unknown">Audio: Checking…</span>
+  </div>
+</header>
+
+<!-- ═══ Tab Nav ══════════════════════════════════════════════════════════════ -->
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="sequences">
+    🔔 Sequences
+    <span id="seq-count-badge" class="tab-count">0</span>
+  </button>
+  <button class="tab-btn" data-tab="monitor">📊 Audio Monitor</button>
+  <button class="tab-btn" data-tab="log">
+    📋 Detection Log
+    <span id="log-count-badge" class="tab-count">0</span>
+  </button>
+  <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+</nav>
+
+<!-- ═══ Tab: Sequences ════════════════════════════════════════════════════════ -->
+<div id="tab-sequences" class="tab-content active">
+  <div class="toolbar">
+    <h2>Paging Sequences</h2>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Sequence</button>
+  </div>
+  <div id="seq-empty" class="empty-state" style="display:none">
+    <div class="empty-icon">🔕</div>
+    <div class="empty-title">No sequences configured</div>
+    <div class="empty-sub">Add a paging tone sequence to get started.</div>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add First Sequence</button>
+  </div>
+  <div class="table-wrap" id="seq-table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:28px"></th><th>Status</th><th>Name</th><th>Tone A (Hz)</th><th>Tone B (Hz)</th>
+        <th>Sounds</th><th>Media Players</th><th>Reset (s)</th><th>Actions</th>
+      </tr></thead>
+      <tbody id="seq-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ Tab: Audio Monitor ═══════════════════════════════════════════════════ -->
+<div id="tab-monitor" class="tab-content">
+  <div class="toolbar">
+    <h2>Audio Monitor</h2>
+    <button class="btn btn-secondary" onclick="restartDecoder()">🔄 Restart Decoder</button>
+  </div>
+  <!-- Row 1: Input Level | Detected Tone -->
+  <div class="monitor-row-1">
+    <div class="monitor-card">
+      <div class="monitor-label">Input Level</div>
+      <div class="level-wrap">
+        <canvas id="level-canvas" height="40" style="width:100%;display:block"></canvas>
+        <span id="level-db" class="level-db-text">— dBFS</span>
+      </div>
+    </div>
+    <div class="monitor-card" id="detected-tone-card">
+      <div class="monitor-label">Detected Tone</div>
+      <div style="display:flex;align-items:center;gap:20px">
+        <div id="peak-hz" style="font-family:var(--mono);font-size:38px;font-weight:600;color:#3db8c8;min-width:160px;letter-spacing:-1px">— Hz</div>
+        <div style="flex:1;min-width:0">
+          <div style="position:relative;height:20px;background:#1d2028;border-radius:4px;overflow:hidden;margin-bottom:6px">
+            <div id="peak-bar" style="position:absolute;left:0;top:0;height:100%;width:0%;background:linear-gradient(90deg,#4a9eca,#3db8c8);border-radius:4px;transition:width 0.15s ease"></div>
+          </div>
+          <div id="peak-note" style="font-family:var(--mono);font-size:12px;color:var(--text2)">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Row 2: Decoder Status | Input Gain | Audio Device -->
+  <div class="monitor-row-2">
+    <div class="monitor-card">
+      <div class="monitor-label">Decoder Status</div>
+      <div id="dec-status-detail" style="font-size:13px;color:var(--text2)">Checking…</div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-label">Input Gain</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <input type="range" id="gain-slider" min="0" max="100" value="50"
+               style="flex:1;accent-color:var(--accent)" oninput="onGainChange(this.value)">
+        <span id="gain-value" style="font-family:var(--mono);font-size:13px;width:44px;text-align:right">×10.0</span>
+      </div>
+    </div>
+    <div class="monitor-card">
+      <div class="monitor-label">Audio Device</div>
+      <div id="audio-device-info" style="font-family:var(--mono);font-size:13px">Checking…</div>
+    </div>
+  </div>
+  <div class="monitor-card">
+    <div class="monitor-label">Live Frequency Detection — Monitored Targets</div>
+    <div id="goertzel-display" class="goertzel-grid">
+      <div style="color:var(--text2);font-size:13px;padding:8px">No sequences configured.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Tab: Detection Log ════════════════════════════════════════════════════ -->
+<div id="tab-log" class="tab-content">
+  <div class="toolbar">
+    <h2>Detection Log</h2>
+    <button class="btn btn-danger-outline" onclick="clearLog()">🗑 Clear Log</button>
+  </div>
+  <div id="log-empty" class="empty-state" style="display:none">
+    <div class="empty-icon">📭</div>
+    <div class="empty-title">No detections yet</div>
+    <div class="empty-sub">Decoded paging sequences will appear here.</div>
+  </div>
+  <div class="table-wrap" id="log-table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Timestamp</th><th>Sequence Name</th><th>Tone A (Hz)</th><th>Tone B (Hz)</th><th>Confidence</th>
+      </tr></thead>
+      <tbody id="log-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ Tab: Settings ════════════════════════════════════════════════════════ -->
+<div id="tab-settings" class="tab-content">
+  <div class="toolbar">
+    <h2>Settings</h2>
+    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+  </div>
+  <div class="settings-grid">
+
+    <div class="settings-card">
+      <h3>Station</h3>
+      <div class="form-row">
+        <label>Department Name</label>
+        <input id="s-dept" type="text" placeholder="Riverside Fire Department">
+      </div>
+      <div class="form-row">
+        <label>Station Name</label>
+        <input id="s-station" type="text" placeholder="Station 1">
+      </div>
+      <div class="form-row">
+        <label>Weather Entity</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <select id="s-weather" style="flex:1;min-width:0"></select>
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;color:var(--text2);cursor:pointer;flex-shrink:0">
+            <input type="checkbox" id="s-show-weather" style="width:14px;height:14px;accent-color:var(--accent2)" checked>
+            Show on Dashboard
+          </label>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Department Logo</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+            📁 Upload
+            <input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">
+          </label>
+          <span id="logo-status" style="font-size:12px;color:var(--text2)"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Audio &amp; Connection</h3>
+      <div class="form-row">
+        <label>Input Device</label>
+        <select id="s-audio-device"></select>
+        <div class="form-hint">USB audio adapter line-in. Save to restart the decoder.</div>
+      </div>
+      <div class="form-row" style="margin-top:4px">
+        <label>Home Assistant</label>
+        <div id="ha-status-detail" style="font-size:13px;color:var(--text2);margin-bottom:6px">Checking…</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="checkHaStatus()">🔍 Re-check</button>
+          <code id="dash-url-display" style="font-size:11px;color:var(--text2)">http://&lt;HA-IP&gt;:8099/dashboard</code>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card settings-card-tall">
+      <h3>Stack Page Configuration</h3>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Page Sequence Gap</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="s-gap" min="1" max="10" step="0.5"
+                   style="width:80px;flex-shrink:0">
+            <span style="font-size:12px;color:var(--text2)">seconds</span>
+          </div>
+          <div class="form-hint">Wait after the last decoded tone before audio plays (default: 3s).</div>
+        </div>
+        <div class="form-row">
+          <label>Multi-Unit Stack Window</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="s-stack" min="5" max="600" step="0.5"
+                   style="width:80px;flex-shrink:0">
+            <span style="font-size:12px;color:var(--text2)">seconds</span>
+          </div>
+          <div class="form-hint">After the first tone, hold the incident open this long for additional units (default: 60s).</div>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:4px">
+        <label>Multi-Unit Ramp Sound</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="s-multi-sound" style="flex:1">
+            <option value="">&mdash; none (play each unit&rsquo;s Sound 1 individually) &mdash;</option>
+          </select>
+          <button class="btn btn-icon btn-sm" onclick="playPreview($('s-multi-sound').value)" title="Preview sound">&#9654;</button>
+          <label class="btn btn-secondary btn-sm"
+                 style="cursor:pointer;white-space:nowrap;margin:0;flex-shrink:0">
+            &uarr; Upload
+            <input type="file" accept="audio/mpeg,.mp3" style="display:none"
+                   onchange="uploadMultiUnitSound(this)">
+          </label>
+        </div>
+        <div class="form-hint">Played instead of individual ramp-up tones when 2+ units are decoded in the same page.</div>
+      </div>
+      <div class="form-row">
+        <label>Multi-Unit Stack Color</label>
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="color" id="s-multi-color" value="#1a4a8b"
+                 style="width:50px;height:34px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
+          <span style="font-size:12px;color:var(--text2)">Alert Dashboard border &amp; card color when 2+ units are dispatched together</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>Timing</h3>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Duplicate Cooldown</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5"
+                   style="width:80px;flex-shrink:0">
+            <span style="font-size:12px;color:var(--text2)">seconds &mdash; 0 to disable</span>
+          </div>
+          <div class="form-hint">Repeat detections of the same sequence within this window are silently ignored as duplicates.</div>
+        </div>
+        <div class="form-row">
+          <label>Alert Board Timeout</label>
+          <select id="s-return">
+            <option value="30">30 seconds</option>
+            <option value="45">45 seconds</option>
+            <option value="60">60 seconds</option>
+            <option value="90">90 seconds</option>
+            <option value="120">2 minutes</option>
+          </select>
+          <div class="form-hint">How long the alert board stays up after the stack window closes.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-card danger-zone">
+      <h3>Danger Zone</h3>
+      <p class="settings-note">Resets Station Assistant config and returns to the setup wizard. HA automations and sequences are <strong>not</strong> deleted.</p>
+      <button class="btn btn-danger" onclick="confirmReset()">&#9888; Reset Setup Wizard</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ Add/Edit Sequence Modal ═══════════════════════════════════════════════ -->
+<div id="seq-modal" class="modal-overlay" style="display:none" onclick="closeModalOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Add Sequence</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label>Sequence Name *</label>
+        <input id="f-name" type="text" placeholder="e.g. Engine 1, Ladder 2, Battalion 1" maxlength="64">
+        <div class="form-hint">HA automation: <strong id="automation-preview">Two-Tone Paging Sequence: …</strong></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Tone A Frequency (Hz) *</label>
+          <input id="f-t1hz" type="number" step="0.1" min="100" max="4000" placeholder="688.8">
+        </div>
+        <div class="form-row">
+          <label>Tone A Duration (s) *</label>
+          <input id="f-t1dur" type="number" step="0.1" min="0.3" max="30" placeholder="1.0" value="1.0">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Tone B Frequency (Hz) *</label>
+          <input id="f-t2hz" type="number" step="0.1" min="100" max="4000" placeholder="440.0">
+        </div>
+        <div class="form-row">
+          <label>Tone B Duration (s) *</label>
+          <input id="f-t2dur" type="number" step="0.1" min="0.3" max="30" placeholder="3.0" value="3.0">
+        </div>
+      </div>
+      <div class="form-hint" style="margin-top:-6px">
+        <strong>All-Call / single long tone?</strong> If your dispatch uses one continuous tone (e.g. 1000 Hz for 8 s), split it evenly: set Tone A and Tone B to the same frequency, each at half the duration (4 s each).
+      </div>
+      <div class="form-row">
+        <label>Ramp Up Alert Tone</label>
+        <div class="sound-row">
+          <select id="f-sound1"></select>
+          <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound1').value)" title="Preview sound">&#9654;</button>
+          <label class="upload-label" title="Upload custom MP3">
+            ↑ Upload
+            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound1')">
+          </label>
+        </div>
+        <div class="form-hint">Plays first when this tone fires — the initial ramp-up or station alert tone.</div>
+      </div>
+      <div class="form-row">
+        <label>Apparatus/Assignment Tone 1 <span style="color:var(--text2);font-size:10px">OPTIONAL</span></label>
+        <div class="sound-row">
+          <select id="f-sound2"></select>
+          <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound2').value)" title="Preview sound">&#9654;</button>
+          <label class="upload-label" title="Upload custom MP3">
+            ↑ Upload
+            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound2')">
+          </label>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Apparatus/Assignment Tone 2 <span style="color:var(--text2);font-size:10px">OPTIONAL</span></label>
+        <div class="sound-row">
+          <select id="f-sound3"></select>
+          <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound3').value)" title="Preview sound">&#9654;</button>
+          <label class="upload-label" title="Upload custom MP3">
+            ↑ Upload
+            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound3')">
+          </label>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>HA Media Players</label>
+        <div id="f-players-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="f-player-add" style="flex:1"></select>
+          <button class="btn btn-sm" type="button" onclick="addPlayerToList()">+ Add</button>
+        </div>
+        <div class="form-hint">Sounds play on all listed players simultaneously when this tone fires.</div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Detection Threshold <span class="label-hint">(0.01–1.0)</span></label>
+          <input id="f-threshold" type="number" step="0.01" min="0.01" max="1.0" value="0.15">
+          <div class="form-hint">Lower number = more forgiving (detects weaker tones). Start at 0.05 and lower if tones aren't triggering.</div>
+        </div>
+        <div class="form-row">
+          <label>Auto-Reset (seconds)</label>
+          <input id="f-reset" type="number" step="1" min="5" max="300" value="30">
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="checkbox-label">
+          <input id="f-enabled" type="checkbox" checked>
+          <span>Enabled &mdash; actively monitor this sequence</span>
+        </label>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Alert Dashboard Icon</label>
+          <select id="f-icon" style="font-size:18px">
+            <option value="">&#x1F691; Auto-detect from name</option>
+            <option value="&#x1F692;">&#x1F692; Fire Engine</option>
+            <option value="&#x1F691;">&#x1F691; Ambulance / Medic</option>
+            <option value="&#x1F697;">&#x1F697; Car / Staff Vehicle</option>
+            <option value="&#x1F6FB;">&#x1F6FB; Pickup / Utility Truck</option>
+            <option value="&#x1F690;">&#x1F690; Bus / Transport</option>
+            <option value="&#x2B50;">&#x2B50; Battalion / Command</option>
+            <option value="&#x1F681;">&#x1F681; Helicopter / Air Ops</option>
+            <option value="&#x26F5;">&#x26F5; Marine / Boat</option>
+            <option value="&#x1F525;">&#x1F525; Fire / Wildland</option>
+            <option value="&#x26D1;&#xFE0F;">&#x26D1;&#xFE0F; Rescue / HAZMAT</option>
+            <option value="&#x1F3E5;">&#x1F3E5; Hospital</option>
+            <option value="&#x1F6F1;">&#x1F6F1; Oncoming Fire Engine</option>
+            <option value="&#x1F4DF;">&#x1F4DF; Pager</option>
+            <option value="&#x1F6E5;&#xFE0F;">&#x1F6E5;&#xFE0F; Motorboat</option>
+            <option value="&#x1F514;">&#x1F514; Bell</option>
+            <option value="&#x1F4E2;">&#x1F4E2; Loudspeaker</option>
+            <option value="&#x1F6A8;">&#x1F6A8; Police Light</option>
+            <option value="&#x26A0;&#xFE0F;">&#x26A0;&#xFE0F; Warning</option>
+          </select>
+          <div class="form-hint">Icon shown on the Alert Dashboard next to the unit name.</div>
+        </div>
+        <div class="form-row">
+          <label>Alert Dashboard Color</label>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+            <input type="color" id="f-alert-color" value="#8b1a1a"
+                   style="width:50px;height:34px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
+            <span style="font-size:12px;color:var(--text2)">Border flash &amp; card background on the Alert Dashboard when this tone fires</span>
+          </div>
+        </div>
+      </div>
+      <div id="modal-rename-warn" class="warning-box" style="display:none">
+        ⚠️ <strong>Renaming updates the HA automation.</strong> The old automation will be replaced.
+        Your existing automation actions will be <strong>preserved</strong> automatically.
+      </div>
+      <div id="modal-error" class="error-box" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveSequence()">Save &amp; Create Automation</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Delete Confirm Modal ══════════════════════════════════════════════════ -->
+<div id="confirm-modal" class="modal-overlay" style="display:none">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Delete Sequence</h3>
+      <button class="modal-close" onclick="closeConfirmModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message"></p>
+      <div class="warning-box" style="margin-top:10px">
+        ⚠️ This will also <strong>delete the HA automation</strong> and any actions configured inside it.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancel</button>
+      <button class="btn btn-danger" id="confirm-delete-btn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+'use strict';
+const SCRIPT_ROOT = "{{ script_root }}";
+
+// ── State ──────────────────────────────────────────────────────────────────
+let sequences  = [];
+let editingId  = null;
+let soundsList = [];
+let mediaPlayers = [];
+let selectedPlayers = [];   // current modal's chosen entity IDs
+let levelInterval = null;
+let peakInterval  = null;
+let gainSaveTimer = null;
+let sseSource     = null;  // EventSource for live goertzel updates
+
+// ── Player-list helpers ────────────────────────────────────────────────────
+function renderPlayerList() {
+  const container = $('f-players-list');
+  if (!container) return;
+  container.innerHTML = '';
+  selectedPlayers.forEach((eid, idx) => {
+    const mp = mediaPlayers.find(m => m.entity_id === eid);
+    const label = mp ? `${mp.friendly_name}` : eid;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;background:var(--surface2,#0d1a22);border:1px solid var(--border);border-radius:6px;padding:6px 10px';
+    row.innerHTML = `<span style="flex:1;font-size:13px;font-family:var(--mono)">${esc(label)}<span style="color:var(--text2);font-size:11px;margin-left:8px">${esc(eid)}</span></span>
+      <button class="btn btn-danger-outline btn-sm" type="button" onclick="removePlayer(${idx})" title="Remove">&times;</button>`;
+    container.appendChild(row);
+  });
+}
+
+function addPlayerToList() {
+  const sel = $('f-player-add');
+  if (!sel || !sel.value) return;
+  if (!selectedPlayers.includes(sel.value)) {
+    selectedPlayers.push(sel.value);
+    renderPlayerList();
+  }
+  sel.value = '';
+}
+
+function removePlayer(idx) {
+  selectedPlayers.splice(idx, 1);
+  renderPlayerList();
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(SCRIPT_ROOT + path, opts);
+  return r.json();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = `toast toast-${type}`;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+// ── Tab navigation ─────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    $('tab-' + tab).classList.add('active');
+    if (tab === 'monitor')  { startMonitor(); }
+    if (tab === 'log')      { loadLog(); }
+    if (tab === 'settings') { loadSettings(); }
+    // Stop level polling when leaving monitor
+    if (tab !== 'monitor' && levelInterval) {
+      clearInterval(levelInterval);
+      levelInterval = null;
+    }
+    if (tab !== 'monitor' && peakInterval) {
+      clearInterval(peakInterval);
+      peakInterval = null;
+    }
+    if (tab !== 'monitor' && sseSource) {
+      sseSource.close();
+      sseSource = null;
+    }
+  });
+});
+
+// ── Persistent LED SSE (always on, drives Sequences tab indicators) ────────
+(function initLedSSE() {
+  const ledTimers = {};
+  function connect() {
+    const src = new EventSource(SCRIPT_ROOT + '/api/stream');
+    src.addEventListener('detection', e => {
+      try {
+        const d = JSON.parse(e.data);
+        const led = document.getElementById('seq-led-' + d.seq_id);
+        if (!led) return;
+        led.classList.add('active');
+        clearTimeout(ledTimers[d.seq_id]);
+        ledTimers[d.seq_id] = setTimeout(() => led.classList.remove('active'), 5000);
+      } catch(err) {}
+    });
+    src.onerror = () => {
+      src.close();
+      setTimeout(connect, 5000);  // reconnect after 5s on error
+    };
+  }
+  connect();
+})();
+
+// ════════════════════════════════════════════════════════════════════════════
+// SEQUENCES TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadSequences() {
+  const data = await api('GET', '/api/sequences');
+  sequences = data.sequences || [];
+  renderSequences();
+}
+
+function renderSequences() {
+  $('seq-count-badge').textContent = sequences.length;
+  const empty   = $('seq-empty');
+  const wrapper = $('seq-table-wrap');
+  if (sequences.length === 0) {
+    empty.style.display = 'block';
+    wrapper.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  wrapper.style.display = 'block';
+  // Sequence limit UI
+  const atLimit = sequences.length >= 5;
+  const banner  = $('seq-limit-banner');
+  const addBtn  = $('add-seq-btn');
+  if (banner) banner.style.display = atLimit ? 'block' : 'none';
+  if (addBtn) { addBtn.disabled = atLimit; addBtn.style.opacity = atLimit ? '0.4' : ''; }
+  $('seq-tbody').innerHTML = sequences.map(s => {
+    const sounds = [s.sound_1, s.sound_2, s.sound_3].filter(Boolean);
+    const soundStr = sounds.length
+      ? sounds.map((f, i) => `<span style="color:var(--text2);font-size:11px;margin-right:4px">${i+1}.</span><code>${esc(f)}</code>`).join('<br>')
+      : `<span style="color:var(--text2)">&#8212;</span>`;
+    const players = (s.media_players || []);
+    const player = players.length
+      ? players.map(e => `<code>${esc(e)}</code>`).join('<br>')
+      : `<span style="color:var(--text2)">&#8212;</span>`;
+    const haUrl = `http://${window.location.hostname}:8123/config/automation/edit/automation.${esc(s.ha_automation_id)}`;
+    return `<tr>
+      <td style="text-align:center"><span class="seq-led" id="seq-led-${s.id}"></span></td>
+      <td><span class="pill ${s.enabled ? 'pill-on' : 'pill-off'}">${s.enabled ? 'ON' : 'OFF'}</span></td>
+      <td><strong>${esc(s.name)}</strong></td>
+      <td class="mono">${s.tone1_hz}</td>
+      <td class="mono">${s.tone2_hz}</td>
+      <td style="font-size:12px;line-height:1.8">${soundStr}</td>
+      <td style="font-size:12px;line-height:1.8">${player}</td>
+      <td class="mono">${s.auto_reset_seconds}</td>
+      <td>
+        <div style="display:flex;gap:4px;align-items:center">
+          <button class="btn btn-icon btn-sm" onclick="testSeq('${s.id}')" title="Fire test alert">&#x25B6;</button>
+          <button class="btn btn-icon btn-sm" onclick="openEditModal('${s.id}')" title="Edit sequence">&#x270F;&#xFE0F;</button>
+          <a class="btn btn-icon btn-sm" href="${haUrl}" target="_blank" rel="noopener" title="Open HA Automation">&#x1F916;</a>
+          <button class="btn btn-danger-outline btn-sm" onclick="confirmDelete('${s.id}','${esc(s.name)}')" title="Delete">&#x1F5D1;&#xFE0F;</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  // Rebuild goertzel targets if monitor is open
+  renderGoertzelCards();
+}
+
+// ── Modal: Add ─────────────────────────────────────────────────────────────
+async function openAddModal() {
+  if (sequences.length >= 5) {
+    toast('Maximum of 5 paging sequences allowed.', 'error');
+    return;
+  }
+  editingId = null;
+  $('modal-title').textContent    = 'Add Sequence';
+  $('modal-save-btn').textContent = 'Save & Create Automation';
+  $('modal-rename-warn').style.display = 'none';
+  $('modal-error').style.display       = 'none';
+  $('f-name').value      = '';
+  $('f-t1hz').value      = '';
+  $('f-t1dur').value     = '1.0';
+  $('f-t2hz').value      = '';
+  $('f-t2dur').value     = '3.0';
+  $('f-threshold').value = '0.15';
+  $('f-reset').value     = '30';
+  $('f-enabled').checked = true;
+  $('f-alert-color').value = '#8b1a1a';
+  $('f-icon').value = '';
+  selectedPlayers = [];
+  await loadModalDropdowns(null);
+  $('seq-modal').style.display = 'flex';
+  $('f-name').focus();
+}
+
+// ── Modal: Edit ─────────────────────────────────────────────────────────────
+async function openEditModal(id) {
+  const seq = sequences.find(s => s.id === id);
+  if (!seq) return;
+  editingId = id;
+  $('modal-title').textContent    = 'Edit Sequence';
+  $('modal-save-btn').textContent = 'Save Changes';
+  $('modal-rename-warn').style.display = 'none';
+  $('modal-error').style.display       = 'none';
+  $('f-name').value      = seq.name;
+  $('f-t1hz').value      = seq.tone1_hz;
+  $('f-t1dur').value     = seq.tone1_duration || 1.0;
+  $('f-t2hz').value      = seq.tone2_hz;
+  $('f-t2dur').value     = seq.tone2_duration || 3.0;
+  $('f-threshold').value = seq.threshold || 0.15;
+  $('f-reset').value     = seq.auto_reset_seconds || 30;
+  $('f-enabled').checked = seq.enabled !== false;
+  $('f-alert-color').value = seq.alert_color || '#8b1a1a';
+  $('f-icon').value = seq.icon || '';
+  selectedPlayers = Array.isArray(seq.media_players) ? [...seq.media_players]
+    : seq.media_player_entity ? [seq.media_player_entity] : [];
+  await loadModalDropdowns(seq);
+  $('seq-modal').style.display = 'flex';
+  // Watch for rename
+  $('f-name').oninput = () => {
+    $('modal-rename-warn').style.display =
+      $('f-name').value.trim() !== seq.name ? 'block' : 'none';
+  };
+}
+
+async function loadModalDropdowns(seq) {
+  // Sounds
+  if (soundsList.length === 0) {
+    try { soundsList = (await api('GET', '/api/setup/sounds')).sounds || []; } catch(e) {}
+  }
+  function niceName(fn) {
+    return fn.replace(/\.mp3$/i, '').replace(/[_-]/g, ' ')
+             .replace(/\b\w/g, c => c.toUpperCase());
+  }
+  ['f-sound1', 'f-sound2', 'f-sound3'].forEach((id, i) => {
+    const sel = $(id);
+    sel.innerHTML = '<option value="">(none — skip)</option>';
+    soundsList.forEach(fn => {
+      const o = document.createElement('option');
+      o.value = fn; o.textContent = niceName(fn);
+      sel.appendChild(o);
+    });
+    sel.value = seq ? (seq[`sound_${i + 1}`] || '') : (i === 0 ? (soundsList[0] || '') : '');
+  });
+  // Media players
+  if (mediaPlayers.length === 0) {
+    try { mediaPlayers = (await api('GET', '/api/setup/media_players')).entities || []; } catch(e) {}
+  }
+  const psel = $('f-player-add');
+  psel.innerHTML = '<option value="">(select to add…)</option>';
+  mediaPlayers.forEach(e => {
+    const o = document.createElement('option');
+    o.value = e.entity_id;
+    o.textContent = `${e.friendly_name}  (${e.entity_id})`;
+    psel.appendChild(o);
+  });
+  renderPlayerList();
+  // Automation name preview
+  $('f-name').addEventListener('input', updatePreview);
+  updatePreview();
+}
+
+function updatePreview() {
+  $('automation-preview').textContent =
+    `Two-Tone Paging Sequence: ${$('f-name').value || '…'}`;
+}
+
+function closeModal() { $('seq-modal').style.display = 'none'; }
+function closeModalOnOverlay(e) { if (e.target.classList.contains('modal-overlay')) closeModal(); }
+
+async function saveSequence() {
+  $('modal-error').style.display = 'none';
+  const payload = {
+    name:               $('f-name').value.trim(),
+    tone1_hz:           parseFloat($('f-t1hz').value),
+    tone1_duration:     parseFloat($('f-t1dur').value),
+    tone2_hz:           parseFloat($('f-t2hz').value),
+    tone2_duration:     parseFloat($('f-t2dur').value),
+    threshold:          parseFloat($('f-threshold').value),
+    auto_reset_seconds: parseInt($('f-reset').value),
+    enabled:            $('f-enabled').checked,
+    sound_1:            $('f-sound1').value,
+    sound_2:            $('f-sound2').value,
+    sound_3:            $('f-sound3').value,
+    media_players:      [...selectedPlayers],
+    alert_color:        $('f-alert-color').value,
+    icon:               $('f-icon').value,
+  };
+  if (!payload.name) { showModalError('Sequence name is required.'); return; }
+  if (!payload.tone1_hz || !payload.tone2_hz) { showModalError('Both frequencies are required.'); return; }
+  try {
+    const method = editingId ? 'PUT'  : 'POST';
+    const path   = editingId ? `/api/sequences/${editingId}` : '/api/sequences';
+    const data   = await api(method, path, payload);
+    if (data.status !== 'ok') { showModalError(data.message || 'Save failed.'); return; }
+    closeModal();
+    await loadSequences();
+    toast(editingId ? 'Sequence updated.' : 'Sequence created — automation built!');
+  } catch(e) { showModalError(e.message); }
+}
+
+function showModalError(msg) {
+  const el = $('modal-error');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+// ── Upload sound in modal ──────────────────────────────────────────────────
+async function uploadSoundModal(input, targetId) {
+  const file = input.files[0]; if (!file) return;
+  const label = input.closest('label');
+  const orig  = label.childNodes[0].textContent.trim();
+  label.childNodes[0].textContent = ' Uploading…';
+  try {
+    const fd = new FormData(); fd.append('sound', file);
+    const r  = await fetch(SCRIPT_ROOT + '/api/setup/upload_sound', { method: 'POST', body: fd });
+    const d  = await r.json();
+    if (d.status === 'ok') {
+      soundsList = [];
+      soundsList = (await api('GET', '/api/setup/sounds')).sounds || [];
+      function niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+      ['f-sound1','f-sound2','f-sound3'].forEach((sid, i) => {
+        const sel = $(sid); const cur = sel.value;
+        sel.innerHTML = i === 0 ? '' : '<option value="">(none — skip)</option>';
+        soundsList.forEach(fn => { const o = document.createElement('option'); o.value = fn; o.textContent = niceName(fn); sel.appendChild(o); });
+        sel.value = cur;
+      });
+      $(targetId).value = d.filename;
+      label.childNodes[0].textContent = '✓ Uploaded';
+      setTimeout(() => { label.childNodes[0].textContent = orig; }, 2500);
+    } else { alert(d.message || 'Upload failed'); label.childNodes[0].textContent = orig; }
+  } catch(e) { alert(e.message); label.childNodes[0].textContent = orig; }
+  input.value = '';
+}
+
+// ── Upload multi-unit ramp-up sound (Settings tab) ─────────────────────────
+async function uploadMultiUnitSound(input) {
+  const file = input.files[0]; if (!file) return;
+  const lbl  = input.closest('label');
+  const orig = lbl.childNodes[0].textContent.trim();
+  lbl.childNodes[0].textContent = ' Uploading…';
+  try {
+    const fd = new FormData(); fd.append('sound', file);
+    const r  = await fetch(SCRIPT_ROOT + '/api/setup/upload_sound', { method: 'POST', body: fd });
+    const d  = await r.json();
+    if (d.status === 'ok') {
+      const sndData = await api('GET', '/api/setup/sounds');
+      const musel   = $('s-multi-sound');
+      function _niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+      musel.innerHTML = '<option value="">&mdash; none (play each unit\u2019s Sound 1 individually) &mdash;</option>';
+      (sndData.sounds || []).forEach(fn => {
+        const o = document.createElement('option');
+        o.value = fn; o.textContent = _niceName(fn); musel.appendChild(o);
+      });
+      musel.value = d.filename;
+      lbl.childNodes[0].textContent = '\u2713 Uploaded';
+      setTimeout(() => { lbl.childNodes[0].textContent = orig; }, 2500);
+    } else { alert(d.message || 'Upload failed'); lbl.childNodes[0].textContent = orig; }
+  } catch(e) { alert(e.message); lbl.childNodes[0].textContent = orig; }
+  input.value = '';
+}
+
+// ── Delete confirm ─────────────────────────────────────────────────────────
+let deleteTargetId = null;
+function confirmDelete(id, name) {
+  deleteTargetId = id;
+  $('confirm-message').textContent = `Delete sequence "${name}"?`;
+  $('confirm-delete-btn').onclick = doDelete;
+  $('confirm-modal').style.display = 'flex';
+}
+function closeConfirmModal() { $('confirm-modal').style.display = 'none'; deleteTargetId = null; }
+async function doDelete() {
+  if (!deleteTargetId) return;
+  try {
+    await api('DELETE', `/api/sequences/${deleteTargetId}`);
+    closeConfirmModal();
+    await loadSequences();
+    toast('Sequence deleted.');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Test ───────────────────────────────────────────────────────────────────
+async function testSeq(id) {
+  try {
+    const d = await api('POST', `/api/test/tone/${id}`);
+    toast(d.message || 'Test alert sent!');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Sound preview ─────────────────────────────────────────────────────────────────────
+function playPreview(filename) {
+  if (!filename) { toast('No sound selected.', 'err'); return; }
+  if (window._previewAudio) { window._previewAudio.pause(); window._previewAudio = null; }
+  const a = new Audio(SCRIPT_ROOT + '/api/sounds/' + encodeURIComponent(filename));
+  window._previewAudio = a;
+  a.play().catch(e => toast('Preview failed: ' + e.message, 'err'));
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// AUDIO MONITOR TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+let levelCtx = null;
+function initCanvas() {
+  const c = $('level-canvas');
+  c.width = c.offsetWidth || 500;
+  levelCtx = c.getContext('2d');
+}
+
+function drawLevel(dbfs) {
+  if (!levelCtx) initCanvas();
+  const c = $('level-canvas');
+  const w = c.offsetWidth || 500; const h = 40;
+  c.width = w;
+  levelCtx.fillStyle = '#1d2028';
+  levelCtx.fillRect(0, 0, w, h);
+  const pct  = Math.max(0, Math.min(1, (dbfs + 60) / 60));
+  const fill = pct * w;
+  levelCtx.fillStyle = dbfs > -6 ? '#c0392b' : dbfs > -20 ? '#3db87d' : '#4a9eca';
+  levelCtx.fillRect(0, 5, fill, h - 10);
+  [-60,-50,-40,-30,-20,-10,-6,-3,0].forEach(db => {
+    const x = ((db + 60) / 60) * w;
+    levelCtx.strokeStyle = '#272b35'; levelCtx.lineWidth = 1;
+    levelCtx.beginPath(); levelCtx.moveTo(x, 0); levelCtx.lineTo(x, h); levelCtx.stroke();
+  });
+}
+
+async function startMonitor() {
+  if (levelInterval) return;
+  initCanvas();
+  levelInterval = setInterval(pollLevel, 500);
+  peakInterval  = setInterval(pollPeak,  500);
+  loadGain();
+  loadDeviceInfo();
+
+  // Ensure sequences are loaded before rendering Goertzel cards
+  if (sequences.length === 0) {
+    try {
+      const d = await api('GET', '/api/sequences');
+      sequences = d.sequences || [];
+    } catch(e) {}
+  }
+  renderGoertzelCards();
+
+  // Subscribe to SSE stream for live goertzel_update events
+  if (sseSource) { sseSource.close(); sseSource = null; }
+  sseSource = new EventSource(SCRIPT_ROOT + '/api/stream');
+  sseSource.addEventListener('goertzel_update', e => {
+    try {
+      const data = JSON.parse(e.data);
+      // data is { seq_id: { tone1_mag, tone2_mag, threshold, state }, ... }
+      for (const [seqId, info] of Object.entries(data)) {
+        const threshold = info.threshold || 0.15;
+        const pctA = threshold > 0 ? Math.min(100, (info.tone1_mag / threshold) * 100) : 0;
+        const pctB = threshold > 0 ? Math.min(100, (info.tone2_mag / threshold) * 100) : 0;
+        const fillA = document.getElementById('gz-a-' + seqId);
+        const fillB = document.getElementById('gz-b-' + seqId);
+        const valA  = document.getElementById('gz-av-' + seqId);
+        const valB  = document.getElementById('gz-bv-' + seqId);
+        if (fillA) {
+          fillA.style.width = pctA.toFixed(1) + '%';
+          fillA.style.background = pctA >= 100 ? 'var(--success)' : 'var(--accent2)';
+        }
+        if (fillB) {
+          fillB.style.width = pctB.toFixed(1) + '%';
+          fillB.style.background = pctB >= 100 ? 'var(--success)' : 'var(--accent2)';
+        }
+        if (valA) valA.textContent = info.tone1_mag.toFixed(4);
+        if (valB) valB.textContent = info.tone2_mag.toFixed(4);
+      }
+    } catch(err) {}
+  });
+  sseSource.addEventListener('decoder_status', e => {
+    try {
+      const d = JSON.parse(e.data);
+      loadDeviceInfo();
+    } catch(err) {}
+  });
+  sseSource.addEventListener('detection', e => {
+    try {
+      const d = JSON.parse(e.data);
+      const card = document.getElementById('gz-card-' + d.seq_id);
+      if (!card) return;
+      card.style.transition = 'border-color 0.2s, box-shadow 0.2s';
+      card.style.borderColor = 'var(--success)';
+      card.style.boxShadow   = '0 0 12px 2px rgba(60,200,120,0.45)';
+      setTimeout(() => {
+        card.style.borderColor = '';
+        card.style.boxShadow   = '';
+      }, 4000);
+    } catch(err) {}
+  });
+  sseSource.onerror = () => {
+    // Browser auto-reconnects; nothing to do
+  };
+}
+
+async function pollLevel() {
+  try {
+    const d = await api('GET', '/api/audio/level');
+    const dbfs = d.level_dbfs ?? -96;
+    drawLevel(dbfs);
+    $('level-db').textContent = `${dbfs.toFixed(1)} dBFS`;
+  } catch(e) {}
+}
+
+// ── Detected Tone helpers ──────────────────────────────────────────────────
+function freqToNote(freq) {
+  if (!freq || freq < 20) return '—';
+  const midi  = Math.round(12 * Math.log2(freq / 440) + 69);
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const note  = names[((midi % 12) + 12) % 12];
+  const oct   = Math.floor(midi / 12) - 1;
+  const exact = 440 * Math.pow(2, (midi - 69) / 12);
+  const cents = Math.round(1200 * Math.log2(freq / exact));
+  const cStr  = cents >= 0 ? `+${cents}¢` : `${cents}¢`;
+  return `${note}${oct} (${cStr})`;
+}
+
+async function pollPeak() {
+  try {
+    const d    = await api('GET', '/api/audio/peak');
+    const freq = d.freq  ?? 0;
+    const mag  = d.magnitude ?? 0;
+    const hzEl = $('peak-hz');
+    const barEl = $('peak-bar');
+    const noteEl = $('peak-note');
+    if (!hzEl) return;
+    if (freq > 0) {
+      hzEl.textContent  = `${freq.toFixed(1)} Hz`;
+      hzEl.style.color  = '#3db8c8';
+      barEl.style.width = `${Math.min(100, mag * 100).toFixed(1)}%`;
+      noteEl.textContent = `${freqToNote(freq)} | mag: ${mag.toFixed(4)}`;
+    } else {
+      hzEl.textContent  = '— Hz';
+      hzEl.style.color  = 'var(--text2)';
+      barEl.style.width = '0%';
+      noteEl.textContent = '—';
+    }
+  } catch(e) {}
+}
+
+async function loadGain() {
+  try {
+    const d = await api('GET', '/api/audio/gain');
+    const g = d.gain ?? 50;
+    $('gain-slider').value = g;
+    $('gain-value').textContent = '\u00d7' + (g / 100 * 20).toFixed(1);
+  } catch(e) {}
+}
+
+function onGainChange(val) {
+  $('gain-value').textContent = '\u00d7' + (parseInt(val) / 100 * 20).toFixed(1);
+  clearTimeout(gainSaveTimer);
+  gainSaveTimer = setTimeout(async () => {
+    try { await api('POST', '/api/audio/gain', { gain: parseInt(val) }); } catch(e) {}
+  }, 300);
+}
+
+async function loadDeviceInfo() {
+  try {
+    const d   = await api('GET', '/api/status');
+    const dec = d.decoder || {};
+    $('audio-device-info').textContent =
+      dec.device_index >= 0
+        ? `Device index ${dec.device_index} — ${dec.sample_rate || 44100} Hz`
+        : 'No device configured';
+    const running = dec.running;
+    const err     = dec.error;
+    $('dec-status-detail').innerHTML =
+      running ? `<span style="color:var(--success)">✓ Running</span> — Uptime: ${dec.uptime || '0s'} — Detections: ${dec.total_detections || 0}`
+      : err    ? `<span style="color:var(--danger)">✗ Error: ${esc(err)}</span>`
+               : `<span style="color:var(--warn)">◼ Stopped</span>`;
+  } catch(e) {}
+}
+
+function renderGoertzelCards() {
+  const container = $('goertzel-display');
+  if (!container) return;
+  if (sequences.length === 0) {
+    container.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">No sequences configured.</div>';
+    return;
+  }
+  container.innerHTML = sequences.map(s => `
+    <div class="goertzel-card" id="gz-card-${s.id}">
+      <div class="goertzel-name">${esc(s.name)}</div>
+      <div class="gz-row">
+        <div class="gz-lbl">${s.tone1_hz} Hz</div>
+        <div class="gz-track"><div class="gz-fill" id="gz-a-${s.id}" style="width:0%"></div></div>
+        <div class="gz-val" id="gz-av-${s.id}">—</div>
+      </div>
+      <div class="gz-row">
+        <div class="gz-lbl">${s.tone2_hz} Hz</div>
+        <div class="gz-track"><div class="gz-fill" id="gz-b-${s.id}" style="width:0%"></div></div>
+        <div class="gz-val" id="gz-bv-${s.id}">—</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function restartDecoder() {
+  try {
+    const d = await api('POST', '/api/decoder/restart');
+    toast(d.message || 'Decoder restarted.');
+    setTimeout(loadDeviceInfo, 2000);
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DETECTION LOG TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadLog() {
+  const d    = await api('GET', '/api/detections?limit=200');
+  const dets = d.detections || [];
+  $('log-count-badge').textContent = dets.length;
+  const empty   = $('log-empty');
+  const wrapper = $('log-table-wrap');
+  if (dets.length === 0) {
+    empty.style.display = 'block'; wrapper.style.display = 'none'; return;
+  }
+  empty.style.display = 'none'; wrapper.style.display = 'block';
+  $('log-tbody').innerHTML = dets.map(d => `
+    <tr>
+      <td class="mono">${(d.detected_at || '').replace('T', ' ').slice(0, 19)}</td>
+      <td>${esc(d.seq_name || d.name || '—')}</td>
+      <td class="mono">${d.tone1_hz || '—'}</td>
+      <td class="mono">${d.tone2_hz || '—'}</td>
+      <td class="mono">${d.confidence !== undefined ? (d.confidence * 100).toFixed(0) + '%' : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+async function clearLog() {
+  if (!confirm('Clear all detection log entries?')) return;
+  await api('POST', '/api/detections/clear');
+  await loadLog();
+  toast('Detection log cleared.');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SETTINGS TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadSettings() {
+  try {
+    const d = await api('GET', '/api/settings');
+    const cfg  = d.config  || {};
+    const opts = d.options || {};
+    $('s-dept').value    = cfg.dept_name    || '';
+    $('s-station').value = cfg.station_name || '';
+    $('s-stack').value        = String(cfg.stack_window        || 60);
+    $('s-return').value       = String(cfg.return_timeout      || 45);
+    $('s-gap').value          = String(cfg.page_sequence_gap   || 3);
+    $('s-dupe-cooldown').value = String(cfg.dupe_cooldown ?? 120);
+    // Multi-unit ramp-up sound selector
+    const sndData = await api('GET', '/api/setup/sounds');
+    const musel   = $('s-multi-sound');
+    musel.innerHTML = '<option value="">&mdash; none (play each unit\u2019s Sound 1 individually) &mdash;</option>';
+    function _niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+    (sndData.sounds || []).forEach(fn => {
+      const o = document.createElement('option');
+      o.value = fn; o.textContent = _niceName(fn); musel.appendChild(o);
+    });
+    musel.value = cfg.multi_unit_sound || '';
+    // Multi-unit color
+    $('s-multi-color').value = cfg.multi_unit_color || '#1a4a8b';
+    // Weather
+    const we = await api('GET', '/api/setup/weather_entities');
+    const wsel = $('s-weather');
+    wsel.innerHTML = '<option value="">— none —</option>';
+    (we.entities || []).forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.entity_id; o.textContent = e.friendly_name || e.entity_id;
+      wsel.appendChild(o);
+    });
+    wsel.value = cfg.weather_entity || '';
+    $('s-show-weather').checked = (cfg.show_weather !== false);
+    // Audio devices
+    const ad = await api('GET', '/api/setup/audio_devices');
+    const adsel = $('s-audio-device');
+    adsel.innerHTML = '<option value="-1">— Select device —</option>';
+    (ad.devices || []).forEach(dev => {
+      const o = document.createElement('option');
+      o.value = dev.index; o.textContent = dev.name;
+      adsel.appendChild(o);
+    });
+    adsel.value = String(opts.audio_device_index !== undefined ? opts.audio_device_index : -1);
+    checkHaStatus();
+  } catch(e) { console.error('loadSettings:', e); }
+}
+
+async function saveSettings() {
+  try {
+    const d = await api('POST', '/api/settings/save', {
+      dept_name:         $('s-dept').value.trim(),
+      station_name:      $('s-station').value.trim(),
+      weather_entity:    $('s-weather').value,
+      show_weather:      $('s-show-weather').checked,
+      stack_window:      parseFloat($('s-stack').value) || 60,
+      return_timeout:    parseInt($('s-return').value),
+      page_sequence_gap: parseFloat($('s-gap').value) || 3,
+      dupe_cooldown:     parseFloat($('s-dupe-cooldown').value) || 0,
+      multi_unit_sound:  $('s-multi-sound').value,
+      multi_unit_color:  $('s-multi-color').value,
+      audio_device:      parseInt($('s-audio-device').value),
+    });
+    if (d.status === 'ok') toast('Settings saved.');
+    else toast(d.message || 'Save failed.', 'err');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function uploadLogo(input) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('logo', file);
+  $('logo-status').textContent = 'Uploading…';
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/setup/upload_logo', { method: 'POST', body: fd });
+    const d = await r.json();
+    $('logo-status').textContent = d.status === 'ok' ? '✓ Logo saved' : (d.message || 'Failed');
+  } catch(e) { $('logo-status').textContent = 'Upload failed'; }
+  input.value = '';
+}
+
+async function checkHaStatus() {
+  const el = $('ha-status-detail');
+  el.textContent = 'Checking…';
+  try {
+    const d  = await api('GET', '/api/status');
+    const ha = d.ha || {};
+    el.textContent = ha.connected ? `✓ Connected — ${ha.message}` : `✗ ${ha.message}`;
+    el.style.color = ha.connected ? 'var(--success)' : 'var(--danger)';
+  } catch(e) { el.textContent = `✗ ${e.message}`; el.style.color = 'var(--danger)'; }
+}
+
+function confirmReset() {
+  if (!confirm('Reset setup?\n\nThis stops the decoder and returns to the setup wizard.\nYour HA automations and sequences are NOT deleted.')) return;
+  api('POST', '/api/setup/reset').then(() => { window.location.href = SCRIPT_ROOT + '/setup'; });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// HEADER BADGES
+// ════════════════════════════════════════════════════════════════════════════
+
+async function updateBadges() {
+  try {
+    const d   = await api('GET', '/api/status');
+    const hab = $('ha-badge'); const decb = $('dec-badge');
+    if (d.ha?.connected) {
+      hab.textContent = 'HA: Connected'; hab.className = 'badge badge-ok';
+    } else {
+      hab.textContent = 'HA: Error'; hab.className = 'badge badge-err';
+    }
+    if (d.decoder?.running) {
+      decb.textContent = 'Audio: Running'; decb.className = 'badge badge-ok';
+    } else if (d.decoder?.error) {
+      decb.textContent = 'Audio: Error'; decb.className = 'badge badge-err';
+    } else {
+      decb.textContent = 'Audio: Stopped'; decb.className = 'badge badge-warn';
+    }
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════════════════════
+
+document.addEventListener('DOMContentLoaded', async () => {
+  // Set dashboard link
+  $('dash-link').href = SCRIPT_ROOT + '/dashboard';
+  // Kiosk URL is always the direct port (no Ingress auth required)
+  $('dash-url-display').textContent = 'http://' + window.location.hostname + ':8099/dashboard';
+
+  await loadSequences();
+  updateBadges();
+  setInterval(updateBadges, 15000);
+});
+</script>
+<footer class="app-footer">
+  Lockwood Technology Solutions
+  <span style="opacity:.4">&bull;</span>
+  <a href="https://www.lockwood.tech" target="_blank" rel="noopener noreferrer">www.lockwood.tech</a>
+</footer>
+</body>
+</html>
