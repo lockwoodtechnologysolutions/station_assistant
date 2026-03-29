@@ -1098,22 +1098,53 @@ function stopWindowIndicator() {
   if (windowTickInterval) { clearInterval(windowTickInterval); windowTickInterval = null; }
 }
 
+let returnTickInterval = null;
 function startReturnTimer() {
   stopReturnTimer();
   const timeout = SA_CONFIG.return_timeout;
+
+  // Bottom progress bar
   const bar = document.getElementById('return-bar');
   bar.style.transition = 'none';
   bar.style.width = '100%';
   void bar.offsetWidth;
   bar.style.transition = `width ${timeout}s linear`;
   setTimeout(() => { bar.style.width = '0%'; }, 30);
+
+  // Reuse the stack window indicator to show the return countdown
+  const fill = document.getElementById('stack-fill');
+  fill.className = 'stack-window-fill closed';
+  fill.style.transition = 'none';
+  fill.style.width = '100%';
+  void fill.offsetWidth;
+  fill.style.transition = `width ${timeout}s linear`;
+  setTimeout(() => { fill.style.width = '0%'; }, 30);
+
+  document.getElementById('stack-window-row').querySelector('.stack-window-lbl').textContent = 'Return';
+  let remaining = timeout;
+  document.getElementById('stack-val').textContent = remaining + 's';
+  returnTickInterval = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      document.getElementById('stack-val').textContent = remaining + 's';
+    } else {
+      document.getElementById('stack-val').textContent = '0s';
+      clearInterval(returnTickInterval);
+      returnTickInterval = null;
+    }
+  }, 1000);
+
   returnTimer = setTimeout(() => { showIdle(); }, timeout * 1000);
 }
 
 function stopReturnTimer() {
   if (returnTimer) { clearTimeout(returnTimer); returnTimer = null; }
+  if (returnTickInterval) { clearInterval(returnTickInterval); returnTickInterval = null; }
   const bar = document.getElementById('return-bar');
   if (bar) { bar.style.transition = 'none'; bar.style.width = '100%'; }
+  // Reset the stack window label back to default
+  const lbl = document.querySelector('#stack-window-row .stack-window-lbl');
+  if (lbl) lbl.textContent = 'Stack window';
 }
 
 // ════════════════════════════════════════════════════════════════════════
