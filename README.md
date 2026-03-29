@@ -8,7 +8,7 @@ Fire Station Pager and Radio Alerting & Management Platform for Home Assistant
 
 Station Assistant is a free, open-source Home Assistant addon that brings commercial-grade fire station pager and radio alerting capabilities to your department. Decode two-tone pages, monitor radio traffic, and automate station responses—all with a local-first architecture that operates completely offline after installation. No cloud dependencies, no recurring costs, and full data sovereignty.
 
-Every department deserves professional station alerting—not just those with big budgets. Station Assistant brings enterprise-level capabilities to volunteer and small career departments without the enterprise price tag. Build a complete station automation system using affordable, off-the-shelf home automation hardware that just works.
+Every Department deserves professional station alerting—not just those with big budgets. Station Assistant brings enterprise-level capabilities to volunteer and small career departments without the enterprise price tag. Build a complete station automation system using affordable, off-the-shelf home automation hardware that just works.
 
 
 
@@ -98,6 +98,9 @@ Visual Indication When Offline
 - Active open-source community - Thousands of developers constantly improving integrations, fixing bugs, and adding features at no cost to you
 - Integration bridges included - Connect to cloud services when you want them (weather, notifications) but never required for core functionality
 - Test before you commit - Try devices in a test environment before deploying station-wide; return products that don't work instead of being locked into contracts
+
+<img width="2040" height="1740" alt="image" src="https://github.com/user-attachments/assets/f21a6487-effb-4c49-91a9-31b112246bf9" />
+
 
 ### 📡 Audio Monitor
 - Live real-time audio level meter (dBFS)
