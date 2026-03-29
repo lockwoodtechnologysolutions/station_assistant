@@ -35,6 +35,8 @@ Every department deserves professional station alerting—not just those with bi
 - Dark / light mode toggle (preference saved in browser)
 
 Standby Dashboard
+<img width="1433" height="1235" alt="image" src="https://github.com/user-attachments/assets/3ff7050b-1d0e-4285-9463-ce122b3e105f" />
+
 
 Single Unit Page
 <img width="1432" height="1232" alt="image" src="https://github.com/user-attachments/assets/c6209b11-93c3-4a46-866f-70d4e310f66b" />
