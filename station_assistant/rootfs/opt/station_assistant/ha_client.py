@@ -6,8 +6,10 @@ All calls go through the Supervisor proxy at http://supervisor/core/api.
 """
 
 import os
+import struct
 import logging
 import requests
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,100 @@ def _delete(path: str) -> bool:
         return False
 
 
+# ── MP3 duration helper ───────────────────────────────────────────────────────
+
+# MPEG bitrate lookup tables (kbps).  Index 0 is "free", 15 is "bad".
+_BITRATES_V1_L3 = [0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0]
+_BITRATES_V2_L3 = [0,8,16,24,32,40,48,56,64,80,96,112,128,144,160,0]
+_SAMPLE_RATES_V1 = [44100, 48000, 32000, 0]
+_SAMPLE_RATES_V2 = [22050, 24000, 16000, 0]
+_SAMPLE_RATES_V25 = [11025, 12000, 8000, 0]
+
+# Directories where sound files can be found (bundled + user-uploaded).
+_SOUND_DIRS = [
+    Path("/opt/station_assistant/sounds"),
+    Path("/media/station_assistant"),
+]
+
+
+def _find_sound_file(filename: str) -> Optional[Path]:
+    """Locate a sound file on the local filesystem."""
+    for d in _SOUND_DIRS:
+        p = d / filename
+        if p.is_file():
+            return p
+    return None
+
+
+def get_mp3_duration(filename: str) -> Optional[float]:
+    """Return the duration in seconds of a local MP3 file, or None on failure.
+
+    Uses a lightweight approach: reads the first valid MPEG frame header to
+    get the bitrate, then estimates duration from file size.  Handles ID3v2
+    tags by skipping them.  No external dependencies required.
+    """
+    path = _find_sound_file(filename)
+    if path is None:
+        return None
+
+    try:
+        file_size = path.stat().st_size
+        with open(path, "rb") as f:
+            # Skip ID3v2 tag if present
+            header = f.read(10)
+            if len(header) < 10:
+                return None
+            if header[:3] == b"ID3":
+                # ID3v2 size is stored as 4 × 7-bit "synchsafe" bytes
+                tag_size = (
+                    (header[6] & 0x7F) << 21
+                    | (header[7] & 0x7F) << 14
+                    | (header[8] & 0x7F) << 7
+                    | (header[9] & 0x7F)
+                )
+                f.seek(10 + tag_size)
+            else:
+                f.seek(0)
+
+            # Scan for the first valid MPEG sync word (0xFFE0 mask)
+            buf = f.read(4)
+            attempts = 0
+            while len(buf) == 4 and attempts < 8192:
+                if buf[0] == 0xFF and (buf[1] & 0xE0) == 0xE0:
+                    # Parse the frame header
+                    ver_bits = (buf[1] >> 3) & 0x03   # 00=2.5, 10=2, 11=1
+                    br_index = (buf[2] >> 4) & 0x0F
+                    sr_index = (buf[2] >> 2) & 0x03
+
+                    if ver_bits == 0x03:        # MPEG1
+                        bitrate = _BITRATES_V1_L3[br_index]
+                        sr = _SAMPLE_RATES_V1[sr_index]
+                    elif ver_bits == 0x02:      # MPEG2
+                        bitrate = _BITRATES_V2_L3[br_index]
+                        sr = _SAMPLE_RATES_V2[sr_index]
+                    elif ver_bits == 0x00:      # MPEG2.5
+                        bitrate = _BITRATES_V2_L3[br_index]
+                        sr = _SAMPLE_RATES_V25[sr_index]
+                    else:
+                        bitrate = 0
+                        sr = 0
+
+                    if bitrate > 0 and sr > 0:
+                        audio_bytes = file_size - f.tell() + 4
+                        duration = audio_bytes / (bitrate * 125)  # 125 = 1000/8
+                        return round(duration, 2)
+
+                # Advance one byte and retry
+                f.seek(-3, 1)
+                buf = f.read(4)
+                attempts += 1
+
+    except Exception as e:
+        logger.debug("get_mp3_duration(%s): %s", filename, e)
+
+    return None
+
+
 # ── Media action helpers ───────────────────────────────────────────────────────
 
 def _build_media_actions(seq: dict) -> list:
@@ -114,75 +210,48 @@ def stop_media(entity_id: str) -> bool:
     return result is not None
 
 
-def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
+def wait_until_idle(entity_id: str, timeout: float = 120.0,
+                    known_duration: Optional[float] = None) -> bool:
     """
-    Poll a HA media_player entity until it finishes playing.
-    Returns True when idle, False on timeout.
+    Wait for a media_player to finish playing, then return.
 
-    Strategy:
-      1. Poll until the player enters 'playing'.
-      2. Once playing, if media_duration is available, sleep for the
-         remaining duration instead of polling.  This avoids the multi-second
-         delay caused by slow state transitions on LinkPlay/Arylic devices.
-      3. If media_duration is not available, fall back to polling for the
-         state to leave 'playing'.
-      4. If the player never enters 'playing' within 5s, assume done
-         (handles players that don't expose state, or very short clips).
+    If *known_duration* is provided (seconds, from get_mp3_duration), the
+    function sleeps for that duration plus a small buffer instead of polling
+    the player state.  This eliminates the multi-second gap caused by players
+    (e.g. LinkPlay/Arylic) that are slow to transition out of 'playing'.
+
+    Without a known duration, falls back to state-based polling.
     """
     import time as _time
+
+    if known_duration is not None and known_duration > 0:
+        # ── Fast path: sleep for the file duration ────────────────────────
+        # Add a small buffer for network/player startup latency, but this
+        # is still far faster than waiting for a slow state transition.
+        sleep_for = known_duration + 0.3
+        logger.debug(
+            "wait_until_idle: %s sleeping %.1fs (known_duration=%.1f)",
+            entity_id, sleep_for, known_duration,
+        )
+        _time.sleep(sleep_for)
+        return True
+
+    # ── Fallback: poll player state ───────────────────────────────────────
     deadline        = _time.time() + timeout
     playing_seen    = False
-    playing_grace   = _time.time() + 5.0   # 5s for player to report 'playing'
-    sleep_scheduled = False
+    playing_grace   = _time.time() + 5.0
 
-    _time.sleep(0.3)   # brief wait for command to reach player
+    _time.sleep(0.3)
 
     while _time.time() < deadline:
         state_data = _get(f"/states/{entity_id}", timeout=3)
         if state_data:
             state = state_data.get("state", "")
-            attrs = state_data.get("attributes", {})
-
             if state == "playing":
                 playing_seen = True
-
-                duration = attrs.get("media_duration")
-                position = attrs.get("media_position")
-
-                if duration is not None and position is not None:
-                    try:
-                        dur = float(duration)
-                        pos = float(position)
-                        remaining = dur - pos
-                        if remaining <= 0.5:
-                            # Already at end of track
-                            logger.debug(
-                                "wait_until_idle: %s finished via position "
-                                "(%.1f/%.1f)",
-                                entity_id, pos, dur,
-                            )
-                            return True
-                        if not sleep_scheduled:
-                            # Sleep for remaining duration instead of polling.
-                            # Subtract a small margin so we wake up just before
-                            # the track ends, then one final poll confirms.
-                            sleep_for = max(0.1, remaining - 0.3)
-                            logger.debug(
-                                "wait_until_idle: %s sleeping %.1fs "
-                                "(duration=%.1f, position=%.1f)",
-                                entity_id, sleep_for, dur, pos,
-                            )
-                            _time.sleep(sleep_for)
-                            sleep_scheduled = True
-                            continue  # re-poll immediately after waking
-                    except (TypeError, ValueError):
-                        pass  # fall through to state-based check
-
             elif playing_seen:
-                # Was playing, now stopped — done
                 return True
             elif not playing_seen and _time.time() > playing_grace:
-                # Never reported 'playing' — assume completed or unsupported
                 logger.debug(
                     "wait_until_idle: %s never entered playing state, continuing",
                     entity_id,

@@ -232,6 +232,20 @@ class StackManager:
             name="sa-audio",
         ).start()
 
+    def _play_and_wait(self, players: list, sound: str) -> None:
+        """Play a sound file and wait for it to finish.
+
+        Reads the MP3 duration from the local filesystem so we can sleep for
+        the exact file length instead of polling the media player state.
+        This eliminates dead air between files on slow-reporting players
+        (e.g. LinkPlay/Arylic).
+        """
+        duration = ha.get_mp3_duration(sound)
+        if duration:
+            logger.debug("File %s duration: %.2fs", sound, duration)
+        ha.play_sound(players, sound)
+        ha.wait_until_idle(players[0], known_duration=duration)
+
     def _play_audio(self, stack: list, is_multi: bool, multi_unit_sound: str) -> None:
         """
         Background thread — plays alert audio via direct HA REST API calls.
@@ -257,9 +271,7 @@ class StackManager:
 
                 # Play multi-unit ramp-up to all entities simultaneously
                 if multi_unit_sound:
-                    ha.play_sound(entities, multi_unit_sound)
-                    # Wait for the first entity to finish before apparatus tones
-                    ha.wait_until_idle(entities[0])
+                    self._play_and_wait(entities, multi_unit_sound)
                     logger.info("Multi-unit ramp-up complete: %s", multi_unit_sound)
 
                 # Play apparatus tones (Sound 2, Sound 3) per unit in order
@@ -270,8 +282,7 @@ class StackManager:
                     for slot in ("sound_2", "sound_3"):
                         sound = (unit.get(slot) or "").strip()
                         if sound:
-                            ha.play_sound(players, sound)
-                            ha.wait_until_idle(players[0])
+                            self._play_and_wait(players, sound)
                             logger.info("Played apparatus tone: %s → %s", sound, players)
 
             else:
@@ -285,8 +296,7 @@ class StackManager:
                 for slot in ("sound_1", "sound_2", "sound_3"):
                     sound = (unit.get(slot) or "").strip()
                     if sound:
-                        ha.play_sound(players, sound)
-                        ha.wait_until_idle(players[0])
+                        self._play_and_wait(players, sound)
                         logger.info("Played: %s → %s", sound, players)
 
         except Exception as e:
