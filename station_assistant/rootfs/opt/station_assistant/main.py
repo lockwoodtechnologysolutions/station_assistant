@@ -1069,19 +1069,30 @@ def api_audio_live():
     proc = subprocess.Popen(
         [
             "ffmpeg",
+            "-hide_banner", "-loglevel", "warning",
             "-f", "s16le",           # input: signed 16-bit little-endian PCM
             "-ar", str(sr),          # input sample rate
             "-ac", "1",              # mono
             "-i", "pipe:0",          # read from stdin
-            "-codec:a", "libmp3lame",
             "-b:a", "128k",          # output bitrate
             "-f", "mp3",             # output format
             "pipe:1",                # write to stdout
         ],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
     )
+
+    # Log ffmpeg stderr in a background thread so we can see errors
+    def stderr_logger():
+        try:
+            for line in proc.stderr:
+                msg = line.decode("utf-8", errors="replace").rstrip()
+                if msg:
+                    logger.warning("ffmpeg line-in: %s", msg)
+        except Exception:
+            pass
+    threading.Thread(target=stderr_logger, daemon=True, name="ffmpeg-err").start()
 
     # Thread: feed PCM from AudioStreamBus into ffmpeg stdin
     def feeder():
