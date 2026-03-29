@@ -706,6 +706,18 @@ function buildWizard() {
       '        <input type="number" id="tone_' + i + '_freq_b" value="' + df.b + '" step="0.1" min="300" max="3000">',
       '      </div>',
       '    </div>',
+      '    <div class="sa-row">',
+      '      <div class="sa-field">',
+      '        <label class="sa-label">Tone A Duration (s)</label>',
+      '        <input type="number" id="tone_' + i + '_dur_a" value="1.0" step="0.1" min="0.3" max="30">',
+      '        <div class="sa-hint">How long Tone A must be present (default: 1.0 s).</div>',
+      '      </div>',
+      '      <div class="sa-field">',
+      '        <label class="sa-label">Tone B Duration (s)</label>',
+      '        <input type="number" id="tone_' + i + '_dur_b" value="3.0" step="0.1" min="0.3" max="30">',
+      '        <div class="sa-hint">How long Tone B must be present (default: 3.0 s).</div>',
+      '      </div>',
+      '    </div>',
       '    <div class="sa-field">',
       '      <label class="sa-label">Ramp Up Alert Tone <span style="color:var(--accent2);font-size:9px;margin-left:6px">REQUIRED</span></label>',
       '      <div style="display:flex;gap:8px;align-items:stretch">',
@@ -936,10 +948,11 @@ function buildSummary() {
   for (var i=1; i<=seqCount; i++) {
     var sounds = [v('tone_'+i+'_sound_1'), v('tone_'+i+'_sound_2'), v('tone_'+i+'_sound_3')].filter(Boolean).join(' \u2192 ');
     rows.push(
-      ['Tone ' + i + ' Label',  v('tone_' + i + '_label')],
-      ['Tone ' + i + ' Freqs',  v('tone_' + i + '_freq_a') + ' / ' + v('tone_' + i + '_freq_b') + ' Hz'],
-      ['Tone ' + i + ' Sounds', sounds || '(none)'],
-      ['Tone ' + i + ' Player', v('tone_' + i + '_media_player') || '(none)']
+      ['Tone ' + i + ' Label',     v('tone_' + i + '_label')],
+      ['Tone ' + i + ' Freqs',     v('tone_' + i + '_freq_a') + ' / ' + v('tone_' + i + '_freq_b') + ' Hz'],
+      ['Tone ' + i + ' Durations', (v('tone_' + i + '_dur_a') || '1.0') + ' s / ' + (v('tone_' + i + '_dur_b') || '3.0') + ' s'],
+      ['Tone ' + i + ' Sounds',    sounds || '(none)'],
+      ['Tone ' + i + ' Player',    v('tone_' + i + '_media_player') || '(none)']
     );
   }
   if (ad) rows.push(['Audio Device',   ad.options[ad.selectedIndex] ? ad.options[ad.selectedIndex].text : '(not selected)']);
@@ -958,6 +971,8 @@ async function activate() {
       label:        v('tone_' + i + '_label'),
       freq_a:       parseFloat(v('tone_' + i + '_freq_a')),
       freq_b:       parseFloat(v('tone_' + i + '_freq_b')),
+      duration_a:   parseFloat(v('tone_' + i + '_dur_a')) || 1.0,
+      duration_b:   parseFloat(v('tone_' + i + '_dur_b')) || 3.0,
       sound_1:      v('tone_' + i + '_sound_1'),
       sound_2:      v('tone_' + i + '_sound_2'),
       sound_3:      v('tone_' + i + '_sound_3'),
