@@ -716,10 +716,19 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       try {
         const d = JSON.parse(e.data);
         const led = document.getElementById('seq-led-' + d.seq_id);
-        if (!led) return;
-        led.classList.add('active');
-        clearTimeout(ledTimers[d.seq_id]);
-        ledTimers[d.seq_id] = setTimeout(() => led.classList.remove('active'), 5000);
+        if (led) {
+          led.classList.add('active');
+          clearTimeout(ledTimers[d.seq_id]);
+          ledTimers[d.seq_id] = setTimeout(() => led.classList.remove('active'), 5000);
+        }
+        // Keep the Detection Log badge count current as detections arrive
+        const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
+        if (activeTab === 'log') {
+          loadLog(); // refreshes badge from server and re-renders table
+        } else {
+          const badge = $('log-count-badge');
+          if (badge) { badge.textContent = (parseInt(badge.textContent, 10) || 0) + 1; }
+        }
       } catch(err) {}
     });
     src.onerror = () => {
@@ -1395,6 +1404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   $('dash-url-display').textContent = 'http://' + window.location.hostname + ':8099/dashboard';
 
   await loadSequences();
+  loadLog();
   updateBadges();
   setInterval(updateBadges, 15000);
 });
