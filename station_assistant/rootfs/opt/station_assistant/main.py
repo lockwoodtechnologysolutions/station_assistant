@@ -1051,13 +1051,19 @@ def api_audio_live():
     Uses ffmpeg to transcode raw PCM from the decoder's AudioStreamBus
     into an MP3 stream.  LinkPlay/Arylic devices cannot handle chunked
     WAV with unknown content-length — they need MP3.
+
+    A dedicated reader thread pulls MP3 data from ffmpeg's stdout and
+    puts it into a queue.  This avoids eventlet's monkey-patched select()
+    which doesn't work on subprocess file descriptors.
     """
     import subprocess
-    import select
+    import threading
     import queue as _queue
 
     sub_q = decoder.stream_bus.subscribe()
     sr = decoder.stream_bus.sample_rate
+    mp3_q: _queue.Queue = _queue.Queue(maxsize=500)
+    stop = threading.Event()
 
     # Launch ffmpeg: reads raw PCM on stdin, outputs MP3 on stdout
     proc = subprocess.Popen(
@@ -1077,32 +1083,62 @@ def api_audio_live():
         stderr=subprocess.DEVNULL,
     )
 
+    # Thread: feed PCM from AudioStreamBus into ffmpeg stdin
+    def feeder():
+        try:
+            while not stop.is_set():
+                try:
+                    chunk = sub_q.get(timeout=1.0)
+                except _queue.Empty:
+                    chunk = b'\x00\x00' * 128
+                try:
+                    proc.stdin.write(chunk)
+                    proc.stdin.flush()
+                except (BrokenPipeError, OSError):
+                    break
+        except Exception:
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+
+    # Thread: read MP3 from ffmpeg stdout into mp3_q
+    def reader():
+        try:
+            while not stop.is_set():
+                data = proc.stdout.read(4096)
+                if not data:
+                    break
+                try:
+                    mp3_q.put(data, timeout=1.0)
+                except _queue.Full:
+                    pass  # drop if consumer is too slow
+        except Exception:
+            pass
+
+    feed_t = threading.Thread(target=feeder, daemon=True, name="ffmpeg-feed")
+    read_t = threading.Thread(target=reader, daemon=True, name="ffmpeg-read")
+    feed_t.start()
+    read_t.start()
+
     def generate():
         try:
             while True:
                 try:
-                    chunk = sub_q.get(timeout=2.0)
-                except _queue.Empty:
-                    chunk = b'\x00\x00' * 128  # silence keepalive
-
-                try:
-                    proc.stdin.write(chunk)
-                    proc.stdin.flush()
-                except BrokenPipeError:
-                    return
-
-                # Read whatever MP3 data ffmpeg has produced
-                while select.select([proc.stdout], [], [], 0)[0]:
-                    data = proc.stdout.read(4096)
-                    if not data:
-                        return
+                    data = mp3_q.get(timeout=3.0)
                     yield data
+                except _queue.Empty:
+                    # No data for 3s — ffmpeg may have died
+                    if not read_t.is_alive():
+                        return
         except GeneratorExit:
             pass
         finally:
+            stop.set()
             decoder.stream_bus.unsubscribe(sub_q)
             try:
-                proc.stdin.close()
                 proc.terminate()
                 proc.wait(timeout=3)
             except Exception:
