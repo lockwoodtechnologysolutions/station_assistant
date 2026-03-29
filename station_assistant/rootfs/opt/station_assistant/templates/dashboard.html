@@ -139,29 +139,24 @@ body::after {
 }
 
 /* ── Alert border flash ────────────────────────────────────────────────── */
+/* GPU-composited: uses only opacity + transform (no box-shadow repaints).
+   Smooth on low-power devices like RPi kiosks. */
 #alert-border {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 998;
 }
-#alert-border::before,
-#alert-border::after {
+#alert-border::before {
   content: '';
   position: absolute;
   inset: 0;
+  border: 12px solid rgb(var(--alert-r),var(--alert-g),var(--alert-b));
   opacity: 0;
   will-change: opacity;
+  transform: translateZ(0);
 }
-#alert-border::before {
-  border: 12px solid rgb(var(--alert-r),var(--alert-g),var(--alert-b));
-}
-#alert-border::after {
-  box-shadow: inset 0 0 120px rgba(var(--alert-r),var(--alert-g),var(--alert-b),0.35),
-              0 0 80px rgba(var(--alert-r),var(--alert-g),var(--alert-b),0.9);
-}
-#alert-border.flash::before,
-#alert-border.flash::after {
+#alert-border.flash::before {
   animation: borderFlash 0.65s ease-in-out infinite;
 }
 @keyframes borderFlash {
