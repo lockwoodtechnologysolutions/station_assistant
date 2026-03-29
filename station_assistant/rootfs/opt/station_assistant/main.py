@@ -1046,40 +1046,79 @@ def api_stream():
 
 @app.route("/api/audio/live")
 def api_audio_live():
-    """Stream live Line In audio as a WAV file.
+    """Stream live Line In audio as MP3 for media player compatibility.
 
-    Media players call this URL to hear the dispatch audio after alert
-    sounds finish.  Each connected client gets its own subscriber queue
-    from the decoder's AudioStreamBus.
+    Uses ffmpeg to transcode raw PCM from the decoder's AudioStreamBus
+    into an MP3 stream.  LinkPlay/Arylic devices cannot handle chunked
+    WAV with unknown content-length — they need MP3.
     """
-    from decoder import AudioStreamBus
+    import subprocess
+    import select
     import queue as _queue
 
     sub_q = decoder.stream_bus.subscribe()
     sr = decoder.stream_bus.sample_rate
 
+    # Launch ffmpeg: reads raw PCM on stdin, outputs MP3 on stdout
+    proc = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-f", "s16le",           # input: signed 16-bit little-endian PCM
+            "-ar", str(sr),          # input sample rate
+            "-ac", "1",              # mono
+            "-i", "pipe:0",          # read from stdin
+            "-codec:a", "libmp3lame",
+            "-b:a", "128k",          # output bitrate
+            "-f", "mp3",             # output format
+            "pipe:1",                # write to stdout
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
     def generate():
         try:
-            yield AudioStreamBus.wav_header(sr)
             while True:
                 try:
                     chunk = sub_q.get(timeout=2.0)
-                    yield chunk
                 except _queue.Empty:
-                    # Send a tiny silence frame to keep the connection alive
-                    yield b'\x00\x00' * 128
+                    chunk = b'\x00\x00' * 128  # silence keepalive
+
+                try:
+                    proc.stdin.write(chunk)
+                    proc.stdin.flush()
+                except BrokenPipeError:
+                    return
+
+                # Read whatever MP3 data ffmpeg has produced
+                while select.select([proc.stdout], [], [], 0)[0]:
+                    data = proc.stdout.read(4096)
+                    if not data:
+                        return
+                    yield data
         except GeneratorExit:
             pass
         finally:
             decoder.stream_bus.unsubscribe(sub_q)
+            try:
+                proc.stdin.close()
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
     return app.response_class(
         generate(),
-        mimetype="audio/wav",
+        mimetype="audio/mpeg",
         headers={
-            "Cache-Control":     "no-store",
-            "X-Accel-Buffering": "no",
-            "Connection":        "keep-alive",
+            "Cache-Control":       "no-store",
+            "X-Accel-Buffering":   "no",
+            "Connection":          "keep-alive",
+            "icy-name":            "Station Assistant Line In",
         },
     )
 
