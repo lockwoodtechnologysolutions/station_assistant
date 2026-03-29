@@ -24,6 +24,17 @@ Every department deserves professional station alerting—not just those with bi
 
 <img width="1788" height="1032" alt="image" src="https://github.com/user-attachments/assets/526c0c1e-1581-4d59-9cc6-b5158dbc38ef" />
 
+**Configure each two-tone paging sequence**
+- Name
+- Tone Frequency/Timing Details
+- Ramp Up Tone
+- 2 Apparatus/Assignment Tones
+- Route Audio Files to any Media Player(s)
+- Choose Alert Dashboard color
+
+<img width="1072" height="1187" alt="image" src="https://github.com/user-attachments/assets/843a4f0c-ca77-4ac3-9c5a-1da7ddad1f09" />
+
+
 
 ### 🚨 Alert Dashboard
 - Full-screen kiosk-style display, accessible without Home Assistant login (direct on port 8099)
