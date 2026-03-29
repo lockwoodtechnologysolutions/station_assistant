@@ -282,40 +282,24 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
                 safe = str(p).replace("'", "'\\''")
                 f.write(f"file '{safe}'\n")
 
-        # Use ffmpeg concat demuxer to merge files.  This re-muxes the
-        # streams so different sample rates / bitrates are handled correctly
-        # (avoids chipmunk effect on LinkPlay devices).
+        # Use ffmpeg to merge files, always re-encoding to a uniform sample
+        # rate.  Stream-copy (-c copy) would be faster but silently produces
+        # broken output when files have different sample rates — LinkPlay
+        # devices read the rate from the first frame and apply it to all
+        # subsequent frames, causing a chipmunk effect.
         result = subprocess.run(
             [
-                "ffmpeg", "-y",             # overwrite output
-                "-f", "concat",             # concat demuxer
-                "-safe", "0",               # allow absolute paths
-                "-i", str(concat_list),      # input file list
-                "-c", "copy",               # stream copy (no re-encode)
+                "ffmpeg", "-y",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_list),
+                "-ar", "44100",         # normalize sample rate
+                "-ac", "1",             # mono
+                "-b:a", "128k",         # constant bitrate
                 str(out_path),
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=60,
         )
-
-        if result.returncode != 0:
-            # stream copy failed (mismatched codecs/rates) — retry with re-encode
-            logger.warning(
-                "concatenate_sounds: stream copy failed, re-encoding: %s",
-                result.stderr[-200:] if result.stderr else "unknown error",
-            )
-            result = subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-f", "concat",
-                    "-safe", "0",
-                    "-i", str(concat_list),
-                    "-ar", "44100",         # normalize sample rate
-                    "-ac", "1",             # mono
-                    "-b:a", "128k",         # constant bitrate
-                    str(out_path),
-                ],
-                capture_output=True, text=True, timeout=60,
-            )
 
         if result.returncode != 0:
             logger.error(
