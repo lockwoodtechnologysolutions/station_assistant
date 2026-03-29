@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 
 bashio::log.info "Starting Station Assistant..."
-bashio::log.info "Station Assistant v1.0.0"
+bashio::log.info "Station Assistant v1.3.2"
 
 cd /opt/station_assistant || bashio::exit.nok "Could not change to app directory"
 
