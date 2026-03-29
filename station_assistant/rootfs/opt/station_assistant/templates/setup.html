@@ -253,6 +253,7 @@
   }
   .sa-level-fill.warn  { background: #a07000; }
   .sa-level-fill.clip  { background: var(--red); }
+  .sa-level-fill.low   { background: var(--red); }
   .sa-level-hint {
     font-size: 10px;
     color: var(--muted);
@@ -532,7 +533,7 @@
         </div>
         <div class="sa-level-hint" id="level-hint">
           Click "Monitor Level" to start measuring the audio input.
-          Target: –20 to –10 dBFS with radio audio present.
+          Target: –12 to 0 dBFS with radio audio present.
         </div>
       </div>
 
@@ -914,12 +915,12 @@ function updateLevel(dbfs) {
   var val  = document.getElementById('level-val');
   var hint = document.getElementById('level-hint');
   fill.style.width = Math.max(0, Math.min(100, (dbfs+60)/60*100)) + '%';
-  fill.className = 'sa-level-fill' + (dbfs>-6 ? ' clip' : dbfs>-12 ? ' warn' : '');
+  fill.className = 'sa-level-fill' + (dbfs > 0 ? ' clip' : dbfs > -12 ? '' : dbfs > -30 ? ' warn' : ' low');
   val.textContent  = dbfs.toFixed(1) + ' dBFS';
-  if (dbfs < -40)     hint.textContent = 'Level too low \u2014 check audio connection.';
-  else if (dbfs > -6) hint.textContent = '\u26a0 Too high \u2014 reduce radio volume.';
-  else if (dbfs > -20)hint.textContent = '\u2713 Good level \u2014 optimal range.';
-  else                hint.textContent = 'Acceptable \u2014 try increasing radio volume.';
+  if (dbfs < -30)      hint.textContent = 'Level too low \u2014 check audio connection or increase Input Gain.';
+  else if (dbfs > 0)   hint.textContent = '\u26a0 Clipping \u2014 reduce radio volume or lower Input Gain.';
+  else if (dbfs > -12) hint.textContent = '\u2713 Good level \u2014 optimal range for detection.';
+  else                 hint.textContent = 'Level is low \u2014 try increasing the Input Gain.';
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────

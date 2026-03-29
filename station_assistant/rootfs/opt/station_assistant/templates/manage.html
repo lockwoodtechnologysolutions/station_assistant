@@ -1048,7 +1048,7 @@ function drawLevel(dbfs) {
   levelCtx.fillRect(0, 0, w, h);
   const pct  = Math.max(0, Math.min(1, (dbfs + 60) / 60));
   const fill = pct * w;
-  levelCtx.fillStyle = dbfs > -6 ? '#c0392b' : dbfs > -20 ? '#3db87d' : '#4a9eca';
+  levelCtx.fillStyle = dbfs > 0 ? '#c0392b' : dbfs > -12 ? '#3db87d' : dbfs > -30 ? '#e8a747' : '#c0392b';
   levelCtx.fillRect(0, 5, fill, h - 10);
   [-60,-50,-40,-30,-20,-10,-6,-3,0].forEach(db => {
     const x = ((db + 60) / 60) * w;

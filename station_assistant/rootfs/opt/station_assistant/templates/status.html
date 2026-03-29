@@ -43,6 +43,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .sa-level-fill{height:100%;background:var(--green2);border-radius:3px;transition:width 0.5s}
 .sa-level-fill.warn{background:#b07000}
 .sa-level-fill.clip{background:var(--red2)}
+.sa-level-fill.low{background:var(--red2)}
 .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .stat-box{background:#080d12;border:1px solid var(--border);border-radius:8px;padding:16px;text-align:center}
 .stat-box-val{font-family:var(--mono);font-size:28px;color:#ddeeff;letter-spacing:2px;margin-bottom:4px}
@@ -155,7 +156,7 @@ function pill(ok, label) {
 function levelBar(dbfs) {
   if (dbfs === null || dbfs === undefined || dbfs <= -90) return '<span class="sa-stat-val muted">—</span>';
   const pct = Math.max(0, Math.min(100, (dbfs + 60) / 60 * 100));
-  const cls = dbfs > -6 ? 'clip' : dbfs > -12 ? 'warn' : '';
+  const cls = dbfs > 0 ? 'clip' : dbfs >= -12 ? '' : dbfs >= -30 ? 'warn' : 'low';
   return `<span class="sa-stat-val">${dbfs.toFixed(1)} dBFS<span class="sa-level-track"><span class="sa-level-fill ${cls}" style="width:${pct}%"></span></span></span>`;
 }
 
