@@ -120,11 +120,14 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
     Returns True when idle, False on timeout.
 
     Strategy:
-      - Brief initial sleep to allow the player to transition to 'playing'
-      - Poll every 300ms
-      - If we observe 'playing', wait until it stops
-      - If the player never enters 'playing' within 5s, assume done
-        (handles players that don't expose state, or very short clips)
+      1. If the player exposes media_duration and media_position attributes,
+         use them to detect completion precisely (position >= duration).
+         This avoids delays caused by slow state transitions on platforms
+         like LinkPlay/Arylic.
+      2. Otherwise fall back to state-based detection: wait for the player
+         to enter 'playing' then leave it.
+      3. If the player never enters 'playing' within 5s, assume done
+         (handles players that don't expose state, or very short clips).
     """
     import time as _time
     deadline        = _time.time() + timeout
@@ -137,8 +140,26 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0) -> bool:
         state_data = _get(f"/states/{entity_id}", timeout=3)
         if state_data:
             state = state_data.get("state", "")
+            attrs = state_data.get("attributes", {})
+
             if state == "playing":
                 playing_seen = True
+
+                # Prefer position/duration tracking for precise completion
+                duration = attrs.get("media_duration")
+                position = attrs.get("media_position")
+                if duration is not None and position is not None:
+                    try:
+                        if float(position) >= float(duration) - 0.5:
+                            logger.debug(
+                                "wait_until_idle: %s finished via position "
+                                "(%.1f/%.1f)",
+                                entity_id, float(position), float(duration),
+                            )
+                            return True
+                    except (TypeError, ValueError):
+                        pass  # fall through to state-based check
+
             elif playing_seen:
                 # Was playing, now stopped — done
                 return True
