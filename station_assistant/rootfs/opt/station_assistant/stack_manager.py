@@ -240,7 +240,7 @@ class StackManager:
         This eliminates dead air between files on slow-reporting players
         (e.g. LinkPlay/Arylic).
         """
-        duration = ha.get_mp3_duration(sound)
+        duration = ha.get_sound_duration(sound)
         if duration:
             logger.debug("File %s duration: %.2fs", sound, duration)
         ha.play_sound(players, sound)

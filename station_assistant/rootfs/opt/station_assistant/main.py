@@ -457,9 +457,10 @@ def api_activate():
         try:
             for dst in (sounds_dst_www, sounds_dst_media):
                 dst.mkdir(parents=True, exist_ok=True)
-                for mp3 in sounds_src.glob("*.mp3"):
-                    import shutil as _sh
-                    _sh.copy2(mp3, dst / mp3.name)
+                import shutil as _sh
+                for snd in sounds_src.iterdir():
+                    if snd.suffix.lower() in (".mp3", ".wav"):
+                        _sh.copy2(snd, dst / snd.name)
             logger.info("Copied sounds to %s and %s", sounds_dst_www, sounds_dst_media)
         except Exception as e:
             logger.warning("Could not copy all sounds: %s", e)
@@ -555,16 +556,18 @@ def api_media_players():
 
 @app.route("/api/setup/sounds")
 def api_sounds_list():
-    """Return sorted list of available MP3 sound files (bundled + uploaded)."""
+    """Return sorted list of available sound files (bundled + uploaded)."""
     sounds: set = set()
     # Bundled sounds shipped with the addon
-    for f in (BASE_DIR / "sounds").glob("*.mp3"):
-        sounds.add(f.name)
+    for f in (BASE_DIR / "sounds").glob("*"):
+        if f.suffix.lower() in (".mp3", ".wav"):
+            sounds.add(f.name)
     # Sounds uploaded by the user (mirrored to /media/station_assistant/)
     media_dir = Path("/media/station_assistant")
     if media_dir.exists():
-        for f in media_dir.glob("*.mp3"):
-            sounds.add(f.name)
+        for f in media_dir.glob("*"):
+            if f.suffix.lower() in (".mp3", ".wav"):
+                sounds.add(f.name)
     return jsonify({"status": "ok", "sounds": sorted(sounds)})
 
 
@@ -582,8 +585,8 @@ def api_upload_sound():
     file = request.files["sound"]
     if not file or not file.filename:
         return jsonify({"status": "error", "message": "No file selected"}), 400
-    if not file.filename.lower().endswith(".mp3"):
-        return jsonify({"status": "error", "message": "Only MP3 files are accepted"}), 400
+    if not file.filename.lower().endswith((".mp3", ".wav")):
+        return jsonify({"status": "error", "message": "Only MP3 and WAV files are accepted"}), 400
     # Strip any path components for safety
     filename = Path(file.filename).name
     # Save to bundled sounds dir (base for all other copies)
@@ -612,12 +615,13 @@ def api_serve_sound(filename):
     """Serve a sound file directly so the browser can preview it."""
     from flask import send_file as _sf
     safe_name = Path(filename).name   # strip any path traversal
+    mime = "audio/wav" if safe_name.lower().endswith(".wav") else "audio/mpeg"
     bundled   = BASE_DIR / "sounds" / safe_name
     if bundled.exists():
-        return _sf(str(bundled), mimetype="audio/mpeg")
+        return _sf(str(bundled), mimetype=mime)
     media = Path("/media/station_assistant") / safe_name
     if media.exists():
-        return _sf(str(media), mimetype="audio/mpeg")
+        return _sf(str(media), mimetype=mime)
     return jsonify({"status": "error", "message": "Sound not found"}), 404
 
 

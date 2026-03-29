@@ -67,7 +67,7 @@ def _delete(path: str) -> bool:
         return False
 
 
-# ── MP3 duration helper ───────────────────────────────────────────────────────
+# ── Audio file duration helpers ───────────────────────────────────────────────
 
 # MPEG bitrate lookup tables (kbps).  Index 0 is "free", 15 is "bad".
 _BITRATES_V1_L3 = [0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0]
@@ -92,17 +92,65 @@ def _find_sound_file(filename: str) -> Optional[Path]:
     return None
 
 
-def get_mp3_duration(filename: str) -> Optional[float]:
-    """Return the duration in seconds of a local MP3 file, or None on failure.
+def _get_wav_duration(path: Path) -> Optional[float]:
+    """Return duration of a WAV file in seconds, or None on failure.
 
-    Uses a lightweight approach: reads the first valid MPEG frame header to
-    get the bitrate, then estimates duration from file size.  Handles ID3v2
-    tags by skipping them.  No external dependencies required.
+    Parses the RIFF/WAV header to extract sample rate, bits per sample,
+    and channels, then calculates duration from the data chunk size.
     """
-    path = _find_sound_file(filename)
-    if path is None:
-        return None
+    try:
+        with open(path, "rb") as f:
+            riff = f.read(12)
+            if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:12] != b"WAVE":
+                return None
 
+            # Walk chunks looking for 'fmt ' and 'data'
+            fmt_found = False
+            byte_rate = 0
+            data_size = 0
+
+            while True:
+                chunk_hdr = f.read(8)
+                if len(chunk_hdr) < 8:
+                    break
+                chunk_id = chunk_hdr[:4]
+                chunk_size = struct.unpack_from("<I", chunk_hdr, 4)[0]
+
+                if chunk_id == b"fmt ":
+                    fmt_data = f.read(min(chunk_size, 16))
+                    if len(fmt_data) < 16:
+                        return None
+                    channels = struct.unpack_from("<H", fmt_data, 2)[0]
+                    sample_rate = struct.unpack_from("<I", fmt_data, 4)[0]
+                    byte_rate = struct.unpack_from("<I", fmt_data, 8)[0]
+                    if byte_rate == 0 and sample_rate > 0:
+                        bits_per_sample = struct.unpack_from("<H", fmt_data, 14)[0]
+                        byte_rate = sample_rate * channels * bits_per_sample // 8
+                    # Skip any remaining fmt data
+                    remaining = chunk_size - 16
+                    if remaining > 0:
+                        f.seek(remaining, 1)
+                    fmt_found = True
+                elif chunk_id == b"data":
+                    data_size = chunk_size
+                    break  # data is typically the last chunk we need
+                else:
+                    f.seek(chunk_size, 1)
+
+            if fmt_found and byte_rate > 0 and data_size > 0:
+                return round(data_size / byte_rate, 2)
+
+    except Exception as e:
+        logger.debug("_get_wav_duration(%s): %s", path, e)
+    return None
+
+
+def _get_mp3_duration(path: Path) -> Optional[float]:
+    """Return duration of an MP3 file in seconds, or None on failure.
+
+    Reads the first valid MPEG frame header to get the bitrate, then
+    estimates duration from file size.  Handles ID3v2 tags.
+    """
     try:
         file_size = path.stat().st_size
         with open(path, "rb") as f:
@@ -127,18 +175,17 @@ def get_mp3_duration(filename: str) -> Optional[float]:
             attempts = 0
             while len(buf) == 4 and attempts < 8192:
                 if buf[0] == 0xFF and (buf[1] & 0xE0) == 0xE0:
-                    # Parse the frame header
-                    ver_bits = (buf[1] >> 3) & 0x03   # 00=2.5, 10=2, 11=1
+                    ver_bits = (buf[1] >> 3) & 0x03
                     br_index = (buf[2] >> 4) & 0x0F
                     sr_index = (buf[2] >> 2) & 0x03
 
-                    if ver_bits == 0x03:        # MPEG1
+                    if ver_bits == 0x03:
                         bitrate = _BITRATES_V1_L3[br_index]
                         sr = _SAMPLE_RATES_V1[sr_index]
-                    elif ver_bits == 0x02:      # MPEG2
+                    elif ver_bits == 0x02:
                         bitrate = _BITRATES_V2_L3[br_index]
                         sr = _SAMPLE_RATES_V2[sr_index]
-                    elif ver_bits == 0x00:      # MPEG2.5
+                    elif ver_bits == 0x00:
                         bitrate = _BITRATES_V2_L3[br_index]
                         sr = _SAMPLE_RATES_V25[sr_index]
                     else:
@@ -147,18 +194,34 @@ def get_mp3_duration(filename: str) -> Optional[float]:
 
                     if bitrate > 0 and sr > 0:
                         audio_bytes = file_size - f.tell() + 4
-                        duration = audio_bytes / (bitrate * 125)  # 125 = 1000/8
+                        duration = audio_bytes / (bitrate * 125)
                         return round(duration, 2)
 
-                # Advance one byte and retry
                 f.seek(-3, 1)
                 buf = f.read(4)
                 attempts += 1
 
     except Exception as e:
-        logger.debug("get_mp3_duration(%s): %s", filename, e)
-
+        logger.debug("_get_mp3_duration(%s): %s", path, e)
     return None
+
+
+def get_sound_duration(filename: str) -> Optional[float]:
+    """Return the duration in seconds of a local sound file (MP3 or WAV).
+
+    Looks up the file in the bundled and user-uploaded sound directories,
+    parses the audio header, and returns the duration.  Returns None if the
+    file cannot be found or its format is not recognised.
+    """
+    path = _find_sound_file(filename)
+    if path is None:
+        return None
+
+    suffix = path.suffix.lower()
+    if suffix == ".wav":
+        return _get_wav_duration(path)
+    # Default to MP3 parsing for .mp3 and any other extension
+    return _get_mp3_duration(path)
 
 
 # ── Media action helpers ───────────────────────────────────────────────────────
@@ -190,10 +253,11 @@ def play_sound(entities, sound_filename: str) -> bool:
     media_content_id = (
         f"media-source://media_source/local/station_assistant/{sound_filename}"
     )
+    mime = "audio/wav" if sound_filename.lower().endswith(".wav") else "audio/mpeg"
     payload = {
         "entity_id":          entity_id,
         "media_content_id":   media_content_id,
-        "media_content_type": "audio/mpeg",
+        "media_content_type": mime,
     }
     result = _post("/services/media_player/play_media", payload)
     targets = entity_id if isinstance(entity_id, str) else ", ".join(entity_id)
