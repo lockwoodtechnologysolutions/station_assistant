@@ -671,6 +671,10 @@ def api_settings_save():
         if "line_in_duration" in data:
             try:    new_cfg["line_in_duration"] = max(0.0, float(data["line_in_duration"]))
             except (ValueError, TypeError): new_cfg["line_in_duration"] = 120.0
+        if "stream_base_url" in data:
+            new_cfg["stream_base_url"] = str(data["stream_base_url"]).strip().rstrip("/")
+            # Clear cached URL so the new value takes effect immediately
+            ha._cached_stream_base = ""
         if "show_weather" in data:
             new_cfg["show_weather"] = bool(data["show_weather"])
         sa_config.save(new_cfg)

@@ -447,6 +447,11 @@
           </select>
           <div class="form-hint">After alert sounds finish, relay incoming Line In audio to media players so personnel can hear the dispatch voice message.</div>
         </div>
+        <div class="form-row">
+          <label>Stream Base URL</label>
+          <input type="text" id="s-stream-url" placeholder="http://10.1.0.120:8099">
+          <div class="form-hint">The URL media players use to reach this addon for Line In audio. Set to your HA host IP + port 8099. Leave blank for auto-detect.</div>
+        </div>
       </div>
     </div>
 
@@ -1325,6 +1330,7 @@ async function loadSettings() {
     $('s-gap').value          = String(cfg.page_sequence_gap   || 3);
     $('s-dupe-cooldown').value = String(cfg.dupe_cooldown ?? 120);
     $('s-line-in-dur').value   = String(cfg.line_in_duration ?? 120);
+    $('s-stream-url').value    = cfg.stream_base_url || '';
     // Multi-unit ramp-up sound selector
     const sndData = await api('GET', '/api/setup/sounds');
     const musel   = $('s-multi-sound');
@@ -1374,6 +1380,7 @@ async function saveSettings() {
       page_sequence_gap: parseFloat($('s-gap').value) || 3,
       dupe_cooldown:     parseFloat($('s-dupe-cooldown').value) || 0,
       line_in_duration:  parseFloat($('s-line-in-dur').value) || 0,
+      stream_base_url:   ($('s-stream-url').value || '').trim(),
       multi_unit_sound:  $('s-multi-sound').value,
       multi_unit_color:  $('s-multi-color').value,
       audio_device:      parseInt($('s-audio-device').value),

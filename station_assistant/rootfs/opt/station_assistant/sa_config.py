@@ -35,6 +35,7 @@ DEFAULTS = {
     "multi_unit_color":  "#1a4a8b",  # kiosk border/card color for multi-unit dispatches
     "show_weather":      True,   # show weather card on idle dashboard
     "line_in_duration":  120,    # seconds to relay Line In audio to media players after alert sounds (0 = disabled)
+    "stream_base_url":   "",     # e.g. http://10.1.0.120:8099 — auto-detected if empty
     # Tone 1 (primary — Engine/Primary unit)
     "tone_1_label":    "ENGINE 1",
     "tone_1_freq_a":   688.8,

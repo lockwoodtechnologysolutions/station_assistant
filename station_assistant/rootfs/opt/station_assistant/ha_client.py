@@ -75,21 +75,26 @@ _cached_stream_base: str = ""
 def get_addon_stream_url() -> str:
     """Return the HTTP base URL that media players can use to reach this addon.
 
-    The addon runs inside a Docker container, so its own network interfaces
-    return container-internal IPs (172.30.x.x) which are unreachable from
-    LAN devices like LinkPlay speakers.  We must discover the HOST machine's
-    LAN IP instead.
-
-    Strategy:
-      1. HA's internal_url config (e.g. http://10.1.0.120:8123 → use 10.1.0.120)
-      2. HA's network info API (returns the host's actual network interfaces)
-      3. Fallback to homeassistant.local:8099
+    Reads ``stream_base_url`` from sa_config.  If not set, tries HA's
+    internal_url config, then falls back to homeassistant.local:8099.
     """
     global _cached_stream_base
     if _cached_stream_base:
         return _cached_stream_base
 
-    # Strategy 1: HA internal_url config — most reliable if set
+    # Check user-configured override first
+    try:
+        from sa_config import SAConfig
+        cfg = SAConfig().load()
+        user_url = (cfg.get("stream_base_url") or "").strip().rstrip("/")
+        if user_url:
+            _cached_stream_base = user_url
+            logger.info("Addon stream base URL (from settings): %s", _cached_stream_base)
+            return _cached_stream_base
+    except Exception as e:
+        logger.debug("get_addon_stream_url: sa_config lookup failed: %s", e)
+
+    # Try HA's internal_url config
     try:
         config = _get("/config")
         if config:
@@ -104,26 +109,8 @@ def get_addon_stream_url() -> str:
     except Exception as e:
         logger.debug("get_addon_stream_url: config lookup failed: %s", e)
 
-    # Strategy 2: HA network info — gets the host's real LAN IP
-    try:
-        net_info = _get("/network/info")
-        if net_info and isinstance(net_info, dict):
-            interfaces = net_info.get("data", net_info).get("interfaces", [])
-            for iface in interfaces:
-                if not iface.get("enabled"):
-                    continue
-                for addr_info in iface.get("ipv4", {}).get("address", []):
-                    # addr_info is like "10.1.0.120/24"
-                    addr = addr_info.split("/")[0] if isinstance(addr_info, str) else ""
-                    if addr and not addr.startswith("127.") and not addr.startswith("172."):
-                        _cached_stream_base = f"http://{addr}:8099"
-                        logger.info("Addon stream base URL (from network info): %s", _cached_stream_base)
-                        return _cached_stream_base
-    except Exception as e:
-        logger.debug("get_addon_stream_url: network info lookup failed: %s", e)
-
     _cached_stream_base = "http://homeassistant.local:8099"
-    logger.warning("Addon stream base URL (fallback — may not work for all devices): %s", _cached_stream_base)
+    logger.warning("Addon stream base URL (fallback): %s", _cached_stream_base)
     return _cached_stream_base
 
 
