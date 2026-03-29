@@ -13,7 +13,8 @@ RUN apk add --no-cache \
     gcc \
     musl-dev \
     python3-dev \
-    curl
+    curl \
+    ffmpeg
 
 # ── Python dependencies ────────────────────────────────────────────────────────
 COPY requirements.txt /tmp/
@@ -21,7 +22,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # ── Application files ──────────────────────────────────────────────────────────
 # CACHEBUST: update the date below to force a clean re-copy on every rebuild
-RUN echo "build-2026-03-29c" > /build_info
+RUN echo "build-2026-03-29d" > /build_info
 COPY rootfs/ /
 
 # ── Permissions ────────────────────────────────────────────────────────────────

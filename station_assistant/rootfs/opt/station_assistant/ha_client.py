@@ -236,26 +236,58 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     out_path = out_dir / "_combined_alert.mp3"
+    concat_list = out_dir / "_concat_list.txt"
     try:
-        with open(out_path, "wb") as out:
+        import subprocess
+
+        # Write ffmpeg concat demuxer file list
+        with open(concat_list, "w") as f:
             for p in paths:
-                with open(p, "rb") as src:
-                    header = src.read(10)
-                    if len(header) >= 10 and header[:3] == b"ID3":
-                        tag_size = (
-                            (header[6] & 0x7F) << 21
-                            | (header[7] & 0x7F) << 14
-                            | (header[8] & 0x7F) << 7
-                            | (header[9] & 0x7F)
-                        )
-                        src.seek(10 + tag_size)
-                    else:
-                        src.seek(0)
-                    while True:
-                        chunk = src.read(65536)
-                        if not chunk:
-                            break
-                        out.write(chunk)
+                # Escape single quotes in paths for ffmpeg
+                safe = str(p).replace("'", "'\\''")
+                f.write(f"file '{safe}'\n")
+
+        # Use ffmpeg concat demuxer to merge files.  This re-muxes the
+        # streams so different sample rates / bitrates are handled correctly
+        # (avoids chipmunk effect on LinkPlay devices).
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",             # overwrite output
+                "-f", "concat",             # concat demuxer
+                "-safe", "0",               # allow absolute paths
+                "-i", str(concat_list),      # input file list
+                "-c", "copy",               # stream copy (no re-encode)
+                str(out_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+
+        if result.returncode != 0:
+            # stream copy failed (mismatched codecs/rates) — retry with re-encode
+            logger.warning(
+                "concatenate_sounds: stream copy failed, re-encoding: %s",
+                result.stderr[-200:] if result.stderr else "unknown error",
+            )
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(concat_list),
+                    "-ar", "44100",         # normalize sample rate
+                    "-ac", "1",             # mono
+                    "-b:a", "128k",         # constant bitrate
+                    str(out_path),
+                ],
+                capture_output=True, text=True, timeout=60,
+            )
+
+        if result.returncode != 0:
+            logger.error(
+                "concatenate_sounds: ffmpeg failed: %s",
+                result.stderr[-300:] if result.stderr else "unknown error",
+            )
+            return None
 
         logger.info(
             "concatenate_sounds: merged %d files → %s (%.1f KB)",
@@ -268,6 +300,9 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
         if out_path.exists():
             out_path.unlink()
         return None
+    finally:
+        if concat_list.exists():
+            concat_list.unlink()
 
 
 def cleanup_combined_sound() -> None:
