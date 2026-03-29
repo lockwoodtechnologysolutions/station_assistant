@@ -952,10 +952,17 @@ def api_audio_level():
     # as a proxy for "is audio flowing" — actual level monitoring
     # happens via the SSE endpoint below.
     level = getattr(decoder, "_last_rms", 0.0)
-    # Convert RMS (0-1) to dBFS
+    level_post = getattr(decoder, "_last_rms_post", 0.0)
     import math
     dbfs = 20 * math.log10(max(level, 1e-6)) if level > 0 else -96.0
-    return jsonify({"status": "ok", "level_dbfs": round(dbfs, 1), "rms": round(float(level), 4)})
+    dbfs_post = 20 * math.log10(max(level_post, 1e-6)) if level_post > 0 else -96.0
+    return jsonify({
+        "status": "ok",
+        "level_dbfs": round(dbfs, 1),
+        "rms": round(float(level), 4),
+        "level_dbfs_post": round(dbfs_post, 1),
+        "rms_post": round(float(level_post), 4),
+    })
 
 
 @app.route("/api/audio/peak")

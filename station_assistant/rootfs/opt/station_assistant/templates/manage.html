@@ -234,10 +234,15 @@
   <!-- Row 1: Input Level | Detected Tone -->
   <div class="monitor-row-1">
     <div class="monitor-card">
-      <div class="monitor-label">Input Level</div>
+      <div class="monitor-label">Input Level <span style="font-weight:400;font-size:10px;color:var(--text2)">(pre-gain)</span></div>
       <div class="level-wrap">
-        <canvas id="level-canvas" height="40" style="width:100%;display:block"></canvas>
+        <canvas id="level-canvas" height="24" style="width:100%;display:block"></canvas>
         <span id="level-db" class="level-db-text">— dBFS</span>
+      </div>
+      <div class="monitor-label" style="margin-top:8px">Decoder Level <span style="font-weight:400;font-size:10px;color:var(--text2)">(post-gain)</span></div>
+      <div class="level-wrap">
+        <canvas id="level-canvas-post" height="24" style="width:100%;display:block"></canvas>
+        <span id="level-db-post" class="level-db-text">— dBFS</span>
       </div>
     </div>
     <div class="monitor-card" id="detected-tone-card">
@@ -1056,28 +1061,36 @@ function playPreview(filename) {
 // ════════════════════════════════════════════════════════════════════════════
 
 let levelCtx = null;
+let levelCtxPost = null;
 function initCanvas() {
   const c = $('level-canvas');
   c.width = c.offsetWidth || 500;
   levelCtx = c.getContext('2d');
+  const c2 = $('level-canvas-post');
+  if (c2) { c2.width = c2.offsetWidth || 500; levelCtxPost = c2.getContext('2d'); }
 }
 
-function drawLevel(dbfs) {
-  if (!levelCtx) initCanvas();
-  const c = $('level-canvas');
-  const w = c.offsetWidth || 500; const h = 40;
-  c.width = w;
-  levelCtx.fillStyle = '#1d2028';
-  levelCtx.fillRect(0, 0, w, h);
+function drawLevelBar(ctx, canvas, dbfs, h) {
+  if (!ctx) return;
+  const w = canvas.offsetWidth || 500;
+  canvas.width = w;
+  ctx.fillStyle = '#1d2028';
+  ctx.fillRect(0, 0, w, h);
   const pct  = Math.max(0, Math.min(1, (dbfs + 60) / 60));
   const fill = pct * w;
-  levelCtx.fillStyle = dbfs > 0 ? '#c0392b' : dbfs > -12 ? '#3db87d' : dbfs > -30 ? '#e8a747' : '#c0392b';
-  levelCtx.fillRect(0, 5, fill, h - 10);
+  ctx.fillStyle = dbfs > 0 ? '#c0392b' : dbfs > -12 ? '#3db87d' : dbfs > -30 ? '#e8a747' : '#c0392b';
+  ctx.fillRect(0, 3, fill, h - 6);
   [-60,-50,-40,-30,-20,-10,-6,-3,0].forEach(db => {
     const x = ((db + 60) / 60) * w;
-    levelCtx.strokeStyle = '#272b35'; levelCtx.lineWidth = 1;
-    levelCtx.beginPath(); levelCtx.moveTo(x, 0); levelCtx.lineTo(x, h); levelCtx.stroke();
+    ctx.strokeStyle = '#272b35'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
   });
+}
+
+function drawLevel(dbfs, dbfsPost) {
+  if (!levelCtx) initCanvas();
+  drawLevelBar(levelCtx, $('level-canvas'), dbfs, 24);
+  if (levelCtxPost) drawLevelBar(levelCtxPost, $('level-canvas-post'), dbfsPost, 24);
 }
 
 async function startMonitor() {
@@ -1154,8 +1167,11 @@ async function pollLevel() {
   try {
     const d = await api('GET', '/api/audio/level');
     const dbfs = d.level_dbfs ?? -96;
-    drawLevel(dbfs);
+    const dbfsPost = d.level_dbfs_post ?? -96;
+    drawLevel(dbfs, dbfsPost);
     $('level-db').textContent = `${dbfs.toFixed(1)} dBFS`;
+    const postEl = $('level-db-post');
+    if (postEl) postEl.textContent = `${dbfsPost.toFixed(1)} dBFS`;
   } catch(e) {}
 }
 

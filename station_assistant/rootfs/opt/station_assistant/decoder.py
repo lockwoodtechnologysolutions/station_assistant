@@ -289,6 +289,7 @@ class DecoderService:
         self._intentional_stop: bool = False
         self._total_detections: int = 0
         self._last_rms: float = 0.0
+        self._last_rms_post: float = 0.0
         self._last_peak_freq: float = 0.0
         self._last_peak_mag: float = 0.0
 
@@ -484,12 +485,9 @@ class DecoderService:
         now = time.time()
         self._last_healthy = now
 
-        # Compute and emit RMS level from raw (pre-gain) samples so the VU
-        # meter reflects the true input signal quality, independent of the
-        # gain slider.
+        # Compute pre-gain RMS (true input level from hardware)
         rms = rms_level(samples)
         self._last_rms = float(rms)
-        self.sse_bus.emit("audio_level", {"rms": round(float(rms), 4)})
 
         # Publish raw audio to the live stream bus (pre-gain, true signal).
         # Only convert to PCM bytes when there are active subscribers to
@@ -499,8 +497,18 @@ class DecoderService:
             self.stream_bus.publish(pcm16.tobytes())
 
         # Apply input gain before Goertzel analysis to boost weak signals
-        # for tone detection without affecting the VU meter reading.
+        # for tone detection without affecting the input VU meter reading.
         samples = samples * self._input_gain
+
+        # Compute post-gain RMS (what the decoder actually analyzes)
+        rms_post = rms_level(samples)
+        self._last_rms_post = float(rms_post)
+
+        # Emit both levels so the UI can show dual VU meters
+        self.sse_bus.emit("audio_level", {
+            "rms": round(float(rms), 4),
+            "rms_post": round(float(rms_post), 4),
+        })
 
         # FFT peak frequency detection — shows the dominant tone in the audio
         # regardless of whether it matches a configured sequence.
