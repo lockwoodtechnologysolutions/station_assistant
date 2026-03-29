@@ -80,6 +80,7 @@ _SAMPLE_RATES_V25 = [11025, 12000, 8000, 0]
 _SOUND_DIRS = [
     Path("/opt/station_assistant/sounds"),
     Path("/media/station_assistant"),
+    Path("/config/www/station_assistant/sounds"),
 ]
 
 
@@ -89,6 +90,10 @@ def _find_sound_file(filename: str) -> Optional[Path]:
         p = d / filename
         if p.is_file():
             return p
+    logger.warning(
+        "_find_sound_file: %s not found in any of: %s",
+        filename, [str(d) for d in _SOUND_DIRS],
+    )
     return None
 
 
@@ -238,20 +243,22 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
     if not filenames:
         return None
 
+    logger.info("concatenate_sounds: merging %s", filenames)
+
     # Resolve all source files first
     paths = []
     for fn in filenames:
         p = _find_sound_file(fn)
         if p is None:
-            logger.warning("concatenate_sounds: file not found: %s", fn)
+            logger.error("concatenate_sounds: FAILED — file not found: %s", fn)
             return None
         paths.append(p)
 
     # If only one file, no need to concatenate
     if len(paths) == 1:
+        logger.debug("concatenate_sounds: only 1 file, skipping merge")
         return None
 
-    import tempfile
     out_dir = Path("/media/station_assistant")
     out_dir.mkdir(parents=True, exist_ok=True)
 
