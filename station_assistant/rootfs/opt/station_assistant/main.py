@@ -1217,15 +1217,6 @@ def api_audio_live():
             "icy-name":            "Station Assistant Line In",
         },
     )
-        generate(),
-        mimetype="audio/mpeg",
-        headers={
-            "Cache-Control":       "no-store",
-            "X-Accel-Buffering":   "no",
-            "Connection":          "keep-alive",
-            "icy-name":            "Station Assistant Line In",
-        },
-    )
 
 
 # ── Detection log API (existing) ──────────────────────────────────────────────
