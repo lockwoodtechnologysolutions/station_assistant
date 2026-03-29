@@ -138,7 +138,7 @@ These options are set in the addon's **Configuration** tab in Home Assistant:
 | `audio_device_index` | `-1` | Index of the USB audio input device. Use `-1` to auto-detect, or check the Audio Monitor tab for device list. |
 | `sample_rate` | `44100` | Audio sample rate in Hz. |
 | `chunk_size` | `2048` | Audio buffer chunk size. |
-| `input_gain` | `50` | Input gain (0–100 maps to 0×–20× amplification). Increase if tones are weak. |
+| `input_gain` | `50` | Input gain (0–100 maps to 0.0×–1.0× scaling). Reduce if signal is clipping; 50 = 0.5× attenuation. |
 | `log_retention_days` | `30` | Days to keep detection history. |
 
 Station-level settings (department name, weather entity, sound files, etc.) are configured through the addon's **Settings** tab in the web UI.

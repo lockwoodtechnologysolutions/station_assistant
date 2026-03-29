@@ -232,7 +232,7 @@ class DecoderService:
 
     @input_gain.setter
     def input_gain(self, value: float):
-        self._input_gain = max(0.0, min(20.0, float(value)))
+        self._input_gain = max(0.0, min(1.0, float(value)))
 
     def start(self):
         if self._running:
@@ -295,7 +295,7 @@ class DecoderService:
         sample_rate = opts["sample_rate"]
         chunk_size = opts["chunk_size"]
         device_index = opts["audio_device_index"]
-        self._input_gain = opts.get("input_gain", 50) / 100.0 * 20.0  # 0-100 → 0x-20x
+        self._input_gain = opts.get("input_gain", 50) / 100.0  # 0-100 → 0.0-1.0
         if device_index < 0:
             device_index = None  # PyAudio uses system default
 
@@ -412,7 +412,7 @@ class DecoderService:
 
     def _process_chunk(self, samples: np.ndarray, sample_rate: int):
         """Process one audio chunk against all configured sequences."""
-        samples = np.clip(samples * self._input_gain, -1.0, 1.0)
+        samples = samples * self._input_gain
         sequences = get_sequences()
         now = time.time()
         self._last_healthy = now
