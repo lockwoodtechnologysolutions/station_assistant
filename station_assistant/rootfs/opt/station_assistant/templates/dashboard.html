@@ -959,7 +959,14 @@ function showAlert(payload) {
   renderStack();
   updateEyebrow();
 
-  if (stack_open !== false) {
+  if (stack_open === false) {
+    // Single-unit or gap expired — window already closed by backend.
+    // Skip the stack window countdown and start return timer directly.
+    stopWindowIndicator();
+    document.getElementById('stack-fill').className = 'stack-window-fill closed';
+    document.getElementById('stack-val').textContent = 'closed';
+    startReturnTimer();
+  } else {
     startWindowIndicator(payload.stack_window || SA_CONFIG.stack_window);
   }
 }

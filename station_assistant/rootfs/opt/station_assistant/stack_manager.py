@@ -200,6 +200,10 @@ class StackManager:
         All tones in this page sequence have now been received.
         Fires station_assistant_alert with full multi-unit context,
         then starts the audio playback thread.
+
+        For single-unit dispatches, closes the stack window immediately
+        and starts the return timer so the dashboard doesn't wait through
+        the full multi-unit stack window.
         """
         if not self._stack:
             return
@@ -209,6 +213,19 @@ class StackManager:
         multi_unit_sound = (cfg.get("multi_unit_sound", "") or "").strip()
         stack_snapshot   = list(self._stack)
         is_multi         = len(stack_snapshot) > 1
+
+        # Single-unit: close window now and start return timer immediately
+        if not is_multi:
+            self._stack_open = False
+            if self._window_timer:
+                self._window_timer.cancel()
+                self._window_timer = None
+            if self._return_timer:
+                self._return_timer.cancel()
+            self._return_timer = threading.Timer(return_timeout, self._go_idle)
+            self._return_timer.daemon = True
+            self._return_timer.start()
+            logger.info("Single-unit dispatch — return timer started (%.0fs)", return_timeout)
 
         payload = {
             "event":          "alert",
