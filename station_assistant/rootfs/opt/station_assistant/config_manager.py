@@ -188,6 +188,13 @@ def validate_sequence(data: dict) -> tuple[bool, str]:
         return False, "Threshold must be a valid number"
 
     try:
+        confirm_ratio = float(data.get("confirm_ratio", 0.70))
+        if not (0.10 <= confirm_ratio <= 1.0):
+            return False, "Tone duration tolerance must be between 0.10 and 1.0"
+    except (TypeError, ValueError):
+        return False, "Tone duration tolerance must be a valid number"
+
+    try:
         reset = int(data.get("auto_reset_seconds", 30))
         if reset < 5:
             return False, "Auto-reset must be at least 5 seconds"
@@ -229,6 +236,7 @@ def create_sequence(data: dict) -> tuple[Optional[dict], str]:
             "tone1_duration": float(data["tone1_duration"]),
             "tone2_duration": float(data["tone2_duration"]),
             "threshold": float(data.get("threshold", 0.05)),
+            "confirm_ratio": float(data.get("confirm_ratio", 0.70)),
             "auto_reset_seconds": int(data.get("auto_reset_seconds", 30)),
             "enabled": bool(data.get("enabled", True)),
             "ha_automation_id": slug_to_automation_id(slug),
@@ -283,6 +291,7 @@ def update_sequence(seq_id: str, data: dict) -> tuple[Optional[dict], Optional[d
             "tone1_duration": float(data["tone1_duration"]),
             "tone2_duration": float(data["tone2_duration"]),
             "threshold": float(data.get("threshold", old["threshold"])),
+            "confirm_ratio": float(data.get("confirm_ratio", old.get("confirm_ratio", 0.70))),
             "auto_reset_seconds": int(data.get("auto_reset_seconds", old["auto_reset_seconds"])),
             "enabled": bool(data.get("enabled", old["enabled"])),
             "ha_automation_id": slug_to_automation_id(new_slug),
