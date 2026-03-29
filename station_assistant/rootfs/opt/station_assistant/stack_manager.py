@@ -54,6 +54,10 @@ class StackManager:
         self._incident_start: Optional[float] = None
         self._last_detection: dict = {}    # seq_id → timestamp of last confirmed detection
 
+        # Line In relay state
+        self._line_in_stop = threading.Event()
+        self._streaming_entities: list = []
+
     # ── Public Interface ───────────────────────────────────────────────────
 
     def set_alert_callback(self, fn: Callable) -> None:
@@ -256,7 +260,12 @@ class StackManager:
         Concatenates all sound files into a single MP3 before playing,
         so the media player only buffers once.  Falls back to sequential
         playback if concatenation fails.
+
+        After sound files finish, relays live Line In audio to the same
+        media players for ``line_in_duration`` seconds so personnel can
+        hear the dispatch voice message.
         """
+        all_entities: list = []
         try:
             if is_multi:
                 entities = []
@@ -270,6 +279,8 @@ class StackManager:
                     logger.debug("No media players configured — skipping audio")
                     return
 
+                all_entities = list(entities)
+
                 all_sounds = []
                 if multi_unit_sound:
                     all_sounds.append(multi_unit_sound)
@@ -278,20 +289,18 @@ class StackManager:
                         ["sound_2", "sound_3"], unit,
                     ))
 
-                if self._play_combined(entities, all_sounds):
-                    return
-
-                # Fallback: play files individually
-                if multi_unit_sound:
-                    self._play_and_wait(entities, multi_unit_sound)
-                    logger.info("Multi-unit ramp-up complete: %s", multi_unit_sound)
-                for unit in stack:
-                    players = unit.get("media_players", [])
-                    if not players:
-                        continue
-                    for sound in self._collect_sounds(["sound_2", "sound_3"], unit):
-                        self._play_and_wait(players, sound)
-                        logger.info("Played apparatus tone: %s → %s", sound, players)
+                if not self._play_combined(entities, all_sounds):
+                    # Fallback: play files individually
+                    if multi_unit_sound:
+                        self._play_and_wait(entities, multi_unit_sound)
+                        logger.info("Multi-unit ramp-up complete: %s", multi_unit_sound)
+                    for unit in stack:
+                        players = unit.get("media_players", [])
+                        if not players:
+                            continue
+                        for sound in self._collect_sounds(["sound_2", "sound_3"], unit):
+                            self._play_and_wait(players, sound)
+                            logger.info("Played apparatus tone: %s → %s", sound, players)
 
             else:
                 unit    = stack[0]
@@ -300,22 +309,26 @@ class StackManager:
                     logger.debug("No media player configured — skipping audio")
                     return
 
+                all_entities = list(players)
+
                 all_sounds = self._collect_sounds(
                     ["sound_1", "sound_2", "sound_3"], unit,
                 )
 
-                if self._play_combined(players, all_sounds):
-                    return
-
-                # Fallback: play files individually
-                for sound in all_sounds:
-                    self._play_and_wait(players, sound)
-                    logger.info("Played: %s → %s", sound, players)
+                if not self._play_combined(players, all_sounds):
+                    # Fallback: play files individually
+                    for sound in all_sounds:
+                        self._play_and_wait(players, sound)
+                        logger.info("Played: %s → %s", sound, players)
 
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
         finally:
             ha.cleanup_combined_sound()
+
+        # ── Line In relay ─────────────────────────────────────────────────
+        if all_entities:
+            self._relay_line_in(all_entities)
 
     def _play_combined(self, players: list, sounds: list[str]) -> bool:
         """Concatenate sounds into one file, play it, and wait."""
@@ -336,9 +349,48 @@ class StackManager:
                            known_duration=duration)
         return True
 
+    def _relay_line_in(self, entities: list) -> None:
+        """Stream live Line In audio to media players after alert sounds.
+
+        Reads ``line_in_duration`` from sa_config.  A value of 0 disables
+        the relay.  The relay is interruptible: calling ``_go_idle()`` or
+        ``force_idle()`` sets ``_line_in_stop`` which terminates early.
+        """
+        cfg = self.sa_config.load()
+        duration = float(cfg.get("line_in_duration", 0))
+        if duration <= 0:
+            return
+
+        stream_url = ha.get_addon_stream_url() + "/api/audio/live"
+        self._line_in_stop.clear()
+        self._streaming_entities = list(entities)
+
+        logger.info(
+            "Line In relay: streaming %s → %s for %.0fs",
+            stream_url, entities, duration,
+        )
+        ha.play_url(entities, stream_url)
+
+        # Wait for the configured duration, checking for early stop every 0.5s
+        waited = 0.0
+        while waited < duration:
+            if self._line_in_stop.is_set():
+                logger.info("Line In relay: stopped early (idle/force)")
+                break
+            step = min(0.5, duration - waited)
+            import time as _time
+            _time.sleep(step)
+            waited += step
+
+        # Stop the media players to close the stream connection
+        ha.stop_media(entities)
+        self._streaming_entities = []
+        logger.info("Line In relay: finished (%.0fs)", waited)
+
     def _go_idle(self) -> None:
-        """Clear stack, cancel timers, invoke idle callback."""
+        """Clear stack, cancel timers, stop Line In relay, invoke idle callback."""
         self._cancel_timers()
+        self._line_in_stop.set()  # signal audio thread to stop Line In relay
         self._stack          = []
         self._stack_open     = False
         self._incident_start = None
