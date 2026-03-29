@@ -11,6 +11,7 @@ Architecture:
 import time
 import queue
 import logging
+import struct
 import threading
 from datetime import datetime, timezone
 
@@ -45,6 +46,71 @@ INTER_TONE_TIMEOUT = 4.0
 # Brief signal dips from fading, interference, or AGC oscillation are ignored
 # within this window so users don't need to set thresholds near the noise floor.
 DROPOUT_TOLERANCE = 0.25
+
+
+# ── Live audio streaming bus ─────────────────────────────────────────────────
+
+class AudioStreamBus:
+    """Pub/sub for raw PCM audio chunks — supports multiple stream consumers.
+
+    The decoder publishes 16-bit PCM bytes each chunk.  Each subscriber
+    (e.g. the /api/audio/live endpoint) gets its own queue and receives a
+    copy of every chunk while subscribed.
+    """
+
+    def __init__(self):
+        self._subscribers: list[queue.Queue] = []
+        self._lock = threading.Lock()
+        self.sample_rate: int = 44100  # updated by decoder on stream open
+
+    def subscribe(self) -> queue.Queue:
+        q: queue.Queue = queue.Queue(maxsize=200)
+        with self._lock:
+            self._subscribers.append(q)
+        logger.debug("AudioStreamBus: subscriber added (%d total)", len(self._subscribers))
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self._lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+        logger.debug("AudioStreamBus: subscriber removed (%d remaining)", len(self._subscribers))
+
+    def publish(self, pcm_bytes: bytes) -> None:
+        with self._lock:
+            dead: list[queue.Queue] = []
+            for q in self._subscribers:
+                try:
+                    q.put_nowait(pcm_bytes)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._subscribers.remove(q)
+
+    @property
+    def has_subscribers(self) -> bool:
+        with self._lock:
+            return len(self._subscribers) > 0
+
+    @staticmethod
+    def wav_header(sample_rate: int, bits: int = 16, channels: int = 1) -> bytes:
+        """Build a WAV header for an infinite-length stream."""
+        byte_rate = sample_rate * channels * (bits // 8)
+        block_align = channels * (bits // 8)
+        # Use 0xFFFFFFFF for unknown/streaming length
+        data_size = 0xFFFFFFFF - 44
+        file_size = 0xFFFFFFFF - 8
+        hdr = struct.pack(
+            '<4sI4s'       # RIFF chunk
+            '4sIHHIIHH'   # fmt  chunk
+            '4sI',         # data chunk header
+            b'RIFF', file_size, b'WAVE',
+            b'fmt ', 16, 1, channels, sample_rate, byte_rate, block_align, bits,
+            b'data', data_size,
+        )
+        return hdr
 
 
 class SequenceMachine:
@@ -209,6 +275,7 @@ class DecoderService:
 
     def __init__(self, sse_bus):
         self.sse_bus = sse_bus
+        self.stream_bus = AudioStreamBus()
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._running = False
@@ -345,6 +412,7 @@ class DecoderService:
             stream.start_stream()
             self._audio_error = ""
             self._restart_backoff = 5.0  # Reset backoff on successful open
+            self.stream_bus.sample_rate = sample_rate
             logger.info("Audio stream opened: device=%s rate=%d chunk=%d",
                         device_index, sample_rate, chunk_size)
 
@@ -422,6 +490,13 @@ class DecoderService:
         rms = rms_level(samples)
         self._last_rms = float(rms)
         self.sse_bus.emit("audio_level", {"rms": round(float(rms), 4)})
+
+        # Publish raw audio to the live stream bus (pre-gain, true signal).
+        # Only convert to PCM bytes when there are active subscribers to
+        # avoid wasting CPU when nobody is listening.
+        if self.stream_bus.has_subscribers:
+            pcm16 = np.clip(samples * 32767.0, -32768, 32767).astype(np.int16)
+            self.stream_bus.publish(pcm16.tobytes())
 
         # Apply input gain before Goertzel analysis to boost weak signals
         # for tone detection without affecting the VU meter reading.

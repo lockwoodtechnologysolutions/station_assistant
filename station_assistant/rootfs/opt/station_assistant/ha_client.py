@@ -67,6 +67,41 @@ def _delete(path: str) -> bool:
         return False
 
 
+# ── Addon URL discovery (for media player stream URLs) ───────────────────────
+
+_cached_stream_base: str = ""
+
+
+def get_addon_stream_url() -> str:
+    """Return the HTTP base URL that media players can use to reach this addon.
+
+    Tries to derive the host IP from HA's internal_url config so media player
+    devices on the LAN can reach the addon's mapped port (8099).  Falls back
+    to ``homeassistant.local:8099``.
+    """
+    global _cached_stream_base
+    if _cached_stream_base:
+        return _cached_stream_base
+
+    try:
+        config = _get("/config")
+        if config:
+            internal_url = config.get("internal_url", "")
+            if internal_url:
+                from urllib.parse import urlparse
+                host = urlparse(internal_url).hostname
+                if host:
+                    _cached_stream_base = f"http://{host}:8099"
+                    logger.info("Addon stream base URL: %s", _cached_stream_base)
+                    return _cached_stream_base
+    except Exception as e:
+        logger.debug("get_addon_stream_url: config lookup failed: %s", e)
+
+    _cached_stream_base = "http://homeassistant.local:8099"
+    logger.info("Addon stream base URL (fallback): %s", _cached_stream_base)
+    return _cached_stream_base
+
+
 # ── Audio file duration helpers ───────────────────────────────────────────────
 
 # MPEG bitrate lookup tables (kbps).  Index 0 is "free", 15 is "bad".
@@ -321,8 +356,36 @@ def play_sound(entities, sound_filename: str) -> bool:
     return False
 
 
-def stop_media(entity_id: str) -> bool:
-    """Stop playback on a HA media_player entity."""
+def play_url(entities, url: str, mime: str = "audio/wav") -> bool:
+    """Play an arbitrary HTTP URL on one or more HA media_player entities."""
+    if isinstance(entities, str):
+        entity_id = entities
+    elif isinstance(entities, list) and len(entities) == 1:
+        entity_id = entities[0]
+    else:
+        entity_id = entities
+    payload = {
+        "entity_id":          entity_id,
+        "media_content_id":   url,
+        "media_content_type": mime,
+    }
+    result = _post("/services/media_player/play_media", payload)
+    targets = entity_id if isinstance(entity_id, str) else ", ".join(entity_id)
+    if result is not None:
+        logger.info("play_url: %s → %s", url, targets)
+        return True
+    logger.warning("play_url failed: %s → %s", url, targets)
+    return False
+
+
+def stop_media(entities) -> bool:
+    """Stop playback on one or more HA media_player entities."""
+    if isinstance(entities, str):
+        entity_id = entities
+    elif isinstance(entities, list) and len(entities) == 1:
+        entity_id = entities[0]
+    else:
+        entity_id = entities
     result = _post("/services/media_player/media_stop", {"entity_id": entity_id})
     return result is not None
 

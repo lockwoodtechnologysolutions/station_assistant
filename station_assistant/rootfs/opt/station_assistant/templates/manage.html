@@ -429,6 +429,19 @@
           </select>
           <div class="form-hint">How long the alert board stays up after the stack window closes.</div>
         </div>
+        <div class="form-row">
+          <label>Line In Audio Relay</label>
+          <select id="s-line-in-dur">
+            <option value="0">Disabled</option>
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+            <option value="90">90 seconds</option>
+            <option value="120">2 minutes</option>
+            <option value="180">3 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+          <div class="form-hint">After alert sounds finish, relay incoming Line In audio to media players so personnel can hear the dispatch voice message.</div>
+        </div>
       </div>
     </div>
 
@@ -1295,6 +1308,7 @@ async function loadSettings() {
     $('s-return').value       = String(cfg.return_timeout      || 45);
     $('s-gap').value          = String(cfg.page_sequence_gap   || 3);
     $('s-dupe-cooldown').value = String(cfg.dupe_cooldown ?? 120);
+    $('s-line-in-dur').value   = String(cfg.line_in_duration ?? 120);
     // Multi-unit ramp-up sound selector
     const sndData = await api('GET', '/api/setup/sounds');
     const musel   = $('s-multi-sound');
@@ -1343,6 +1357,7 @@ async function saveSettings() {
       return_timeout:    parseInt($('s-return').value),
       page_sequence_gap: parseFloat($('s-gap').value) || 3,
       dupe_cooldown:     parseFloat($('s-dupe-cooldown').value) || 0,
+      line_in_duration:  parseFloat($('s-line-in-dur').value) || 0,
       multi_unit_sound:  $('s-multi-sound').value,
       multi_unit_color:  $('s-multi-color').value,
       audio_device:      parseInt($('s-audio-device').value),

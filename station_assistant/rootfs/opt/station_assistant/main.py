@@ -141,7 +141,9 @@ def _guard_direct_access():
     _public_paths = {"/dashboard", "/api/health", "/api/weather", "/api/logo"}
     if path in _public_paths:
         return
-    if path.startswith("/api/stream") or path.startswith("/api/sounds/"):
+    if (path.startswith("/api/stream")
+            or path.startswith("/api/sounds/")
+            or path == "/api/audio/live"):
         return
 
     # All other /api/* routes — configuration/management — return 403.
@@ -666,6 +668,9 @@ def api_settings_save():
         if "dupe_cooldown" in data:
             try:    new_cfg["dupe_cooldown"] = max(0.0, float(data["dupe_cooldown"]))
             except (ValueError, TypeError): new_cfg["dupe_cooldown"] = 120.0
+        if "line_in_duration" in data:
+            try:    new_cfg["line_in_duration"] = max(0.0, float(data["line_in_duration"]))
+            except (ValueError, TypeError): new_cfg["line_in_duration"] = 120.0
         if "show_weather" in data:
             new_cfg["show_weather"] = bool(data["show_weather"])
         sa_config.save(new_cfg)
@@ -1026,6 +1031,48 @@ def api_stream():
         headers={
             "Cache-Control":     "no-cache",
             "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── Live audio stream (Line In relay to media players) ────────────────────────
+
+@app.route("/api/audio/live")
+def api_audio_live():
+    """Stream live Line In audio as a WAV file.
+
+    Media players call this URL to hear the dispatch audio after alert
+    sounds finish.  Each connected client gets its own subscriber queue
+    from the decoder's AudioStreamBus.
+    """
+    from decoder import AudioStreamBus
+    import queue as _queue
+
+    sub_q = decoder.stream_bus.subscribe()
+    sr = decoder.stream_bus.sample_rate
+
+    def generate():
+        try:
+            yield AudioStreamBus.wav_header(sr)
+            while True:
+                try:
+                    chunk = sub_q.get(timeout=2.0)
+                    yield chunk
+                except _queue.Empty:
+                    # Send a tiny silence frame to keep the connection alive
+                    yield b'\x00\x00' * 128
+        except GeneratorExit:
+            pass
+        finally:
+            decoder.stream_bus.unsubscribe(sub_q)
+
+    return app.response_class(
+        generate(),
+        mimetype="audio/wav",
+        headers={
+            "Cache-Control":     "no-store",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
         },
     )
 
