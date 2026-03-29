@@ -10,7 +10,6 @@ Station Assistant is a free, open-source Home Assistant addon that brings commer
 
 Every department deserves professional station alerting—not just those with big budgets. Station Assistant brings enterprise-level capabilities to volunteer and small career departments without the enterprise price tag. Build a complete station automation system using affordable, off-the-shelf home automation hardware that just works.
 
-<img width="1072" height="1187" alt="image" src="https://github.com/user-attachments/assets/742d6065-5022-430c-b04f-c3d60c5738ec" />
 
 
 ![Version](https://img.shields.io/badge/version-1.3.2-blue) ![HA Addon](https://img.shields.io/badge/Home%20Assistant-Addon-41BDF5) ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64%20%7C%20armv7%20%7C%20armhf-lightgrey)
