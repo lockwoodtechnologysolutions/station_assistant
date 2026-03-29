@@ -202,7 +202,7 @@ templates/
 - **Storage:** SQLite (detections), JSON flat files (config/sequences)
 - **Process supervisor:** s6-overlay
 
-## 🚀 Commercial Options
+## 🚀 Enterprise Options
 Station Assistant is the free, open-source foundation of our alerting platform. For departments requiring:
 
 - Multi-station deployments with centralized management
