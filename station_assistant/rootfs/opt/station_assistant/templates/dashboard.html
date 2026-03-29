@@ -1096,6 +1096,9 @@ function onWindowClosed() {
 function stopWindowIndicator() {
   windowOpen = false;
   if (windowTickInterval) { clearInterval(windowTickInterval); windowTickInterval = null; }
+  // Kill the CSS transition so it doesn't interfere with the return timer
+  const fill = document.getElementById('stack-fill');
+  if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
 }
 
 let returnTickInterval = null;
