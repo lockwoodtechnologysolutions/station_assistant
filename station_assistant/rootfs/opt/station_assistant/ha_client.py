@@ -224,6 +224,85 @@ def get_sound_duration(filename: str) -> Optional[float]:
     return _get_mp3_duration(path)
 
 
+def concatenate_sounds(filenames: list[str]) -> Optional[str]:
+    """Concatenate multiple MP3 files into a single temporary file.
+
+    MP3 frames are self-describing, so concatenation produces a valid stream
+    that any player can handle seamlessly — no re-encoding required.
+    The temporary file is written to /media/station_assistant/ so HA's
+    media source can serve it directly.
+
+    Returns the filename (not full path) of the combined file, or None on
+    failure.  The caller is responsible for cleanup after playback.
+    """
+    if not filenames:
+        return None
+
+    # Resolve all source files first
+    paths = []
+    for fn in filenames:
+        p = _find_sound_file(fn)
+        if p is None:
+            logger.warning("concatenate_sounds: file not found: %s", fn)
+            return None
+        paths.append(p)
+
+    # If only one file, no need to concatenate
+    if len(paths) == 1:
+        return None
+
+    import tempfile
+    out_dir = Path("/media/station_assistant")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use a fixed temp name so we don't accumulate stale files
+    out_path = out_dir / "_combined_alert.mp3"
+    try:
+        with open(out_path, "wb") as out:
+            for p in paths:
+                with open(p, "rb") as src:
+                    # Skip ID3v2 tag on non-first files to avoid glitches
+                    header = src.read(10)
+                    if len(header) >= 10 and header[:3] == b"ID3":
+                        tag_size = (
+                            (header[6] & 0x7F) << 21
+                            | (header[7] & 0x7F) << 14
+                            | (header[8] & 0x7F) << 7
+                            | (header[9] & 0x7F)
+                        )
+                        src.seek(10 + tag_size)
+                    else:
+                        src.seek(0)
+                    # Copy audio data in chunks
+                    while True:
+                        chunk = src.read(65536)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+
+        logger.info(
+            "concatenate_sounds: merged %d files → %s (%.1f KB)",
+            len(paths), out_path.name, out_path.stat().st_size / 1024,
+        )
+        return out_path.name
+
+    except Exception as e:
+        logger.error("concatenate_sounds failed: %s", e)
+        if out_path.exists():
+            out_path.unlink()
+        return None
+
+
+def cleanup_combined_sound() -> None:
+    """Remove the temporary combined alert file after playback."""
+    combined = Path("/media/station_assistant/_combined_alert.mp3")
+    try:
+        if combined.exists():
+            combined.unlink()
+    except Exception as e:
+        logger.debug("cleanup_combined_sound: %s", e)
+
+
 # ── Media action helpers ───────────────────────────────────────────────────────
 
 def _build_media_actions(seq: dict) -> list:
