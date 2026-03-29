@@ -228,11 +228,13 @@ def _on_stack_alert(payload: dict) -> None:
 def _on_stack_idle(payload: dict) -> None:
     """Broadcast idle state to all connected dashboard clients."""
     socketio.emit("alert", payload)
+    _live_transcoder.stop()
     logger.debug("SocketIO broadcast: idle")
 
 
 stack_mgr.set_alert_callback(_on_stack_alert)
 stack_mgr.set_idle_callback(_on_stack_idle)
+stack_mgr.set_prewarm_callback(lambda: _live_transcoder.start())
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1048,95 +1050,150 @@ def api_stream():
 
 # ── Live audio stream (Line In relay to media players) ────────────────────────
 
-@app.route("/api/audio/live")
-def api_audio_live():
-    """Stream live Line In audio as MP3 for media player compatibility.
+class _LiveTranscoder:
+    """Pre-spawnable ffmpeg PCM→MP3 transcoder for Line In relay.
 
-    Uses ffmpeg to transcode raw PCM from the decoder's AudioStreamBus
-    into an MP3 stream.  LinkPlay/Arylic devices cannot handle chunked
-    WAV with unknown content-length — they need MP3.
-
-    A dedicated reader thread pulls MP3 data from ffmpeg's stdout and
-    puts it into a queue.  This avoids eventlet's monkey-patched select()
-    which doesn't work on subprocess file descriptors.
+    Call ``start()`` early (when alert sounds begin playing) so ffmpeg is
+    warmed up and producing MP3 data by the time the media player connects.
+    The ``/api/audio/live`` endpoint reads from the shared ``mp3_q``.
     """
-    import subprocess
-    import threading
-    import queue as _queue
 
-    sub_q = decoder.stream_bus.subscribe()
-    sr = decoder.stream_bus.sample_rate
-    mp3_q: _queue.Queue = _queue.Queue(maxsize=500)
-    stop = threading.Event()
+    def __init__(self):
+        self._proc = None
+        self._stop = None
+        self._sub_q = None
+        self._feed_t = None
+        self._read_t = None
+        self.mp3_q = None          # consumers read MP3 chunks from here
+        self._lock = threading.Lock()
 
-    # Launch ffmpeg: reads raw PCM on stdin, outputs MP3 on stdout
-    proc = subprocess.Popen(
-        [
-            "ffmpeg",
-            "-hide_banner", "-loglevel", "warning",
-            "-f", "s16le",           # input: signed 16-bit little-endian PCM
-            "-ar", str(sr),          # input sample rate
-            "-ac", "1",              # mono
-            "-i", "pipe:0",          # read from stdin
-            "-b:a", "128k",          # output bitrate
-            "-f", "mp3",             # output format
-            "pipe:1",                # write to stdout
-        ],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    @property
+    def running(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
 
-    # Log ffmpeg stderr in a background thread so we can see errors
-    def stderr_logger():
-        try:
-            for line in proc.stderr:
-                msg = line.decode("utf-8", errors="replace").rstrip()
-                if msg:
-                    logger.warning("ffmpeg line-in: %s", msg)
-        except Exception:
-            pass
-    threading.Thread(target=stderr_logger, daemon=True, name="ffmpeg-err").start()
+    def start(self):
+        """Spawn ffmpeg and begin transcoding. Idempotent."""
+        with self._lock:
+            if self.running:
+                return
+            self._do_start()
 
-    # Thread: feed PCM from AudioStreamBus into ffmpeg stdin
-    def feeder():
-        try:
-            while not stop.is_set():
-                try:
-                    chunk = sub_q.get(timeout=1.0)
-                except _queue.Empty:
-                    chunk = b'\x00\x00' * 128
-                try:
-                    proc.stdin.write(chunk)
-                    proc.stdin.flush()
-                except (BrokenPipeError, OSError):
-                    break
-        except Exception:
-            pass
-        finally:
+    def stop(self):
+        """Shut down the transcoder and free resources."""
+        with self._lock:
+            self._do_stop()
+
+    def _do_start(self):
+        import subprocess as _sp
+
+        sr = decoder.stream_bus.sample_rate
+        self._sub_q = decoder.stream_bus.subscribe()
+        self.mp3_q = queue.Queue(maxsize=500)
+        self._stop = threading.Event()
+
+        self._proc = _sp.Popen(
+            [
+                "ffmpeg",
+                "-hide_banner", "-loglevel", "warning",
+                "-f", "s16le", "-ar", str(sr), "-ac", "1",
+                "-i", "pipe:0",
+                "-b:a", "128k", "-f", "mp3", "pipe:1",
+            ],
+            stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE,
+        )
+
+        def stderr_logger():
             try:
-                proc.stdin.close()
+                for line in self._proc.stderr:
+                    msg = line.decode("utf-8", errors="replace").rstrip()
+                    if msg:
+                        logger.warning("ffmpeg line-in: %s", msg)
             except Exception:
                 pass
 
-    # Thread: read MP3 from ffmpeg stdout into mp3_q
-    def reader():
-        try:
-            while not stop.is_set():
-                data = proc.stdout.read(4096)
-                if not data:
-                    break
+        def feeder():
+            try:
+                while not self._stop.is_set():
+                    try:
+                        chunk = self._sub_q.get(timeout=1.0)
+                    except queue.Empty:
+                        chunk = b'\x00\x00' * 128
+                    try:
+                        self._proc.stdin.write(chunk)
+                        self._proc.stdin.flush()
+                    except (BrokenPipeError, OSError):
+                        break
+            except Exception:
+                pass
+            finally:
                 try:
-                    mp3_q.put(data, timeout=1.0)
-                except _queue.Full:
-                    pass  # drop if consumer is too slow
-        except Exception:
-            pass
+                    self._proc.stdin.close()
+                except Exception:
+                    pass
 
-    feed_t = threading.Thread(target=feeder, daemon=True, name="ffmpeg-feed")
-    read_t = threading.Thread(target=reader, daemon=True, name="ffmpeg-read")
-    feed_t.start()
-    read_t.start()
+        def reader():
+            try:
+                while not self._stop.is_set():
+                    data = self._proc.stdout.read(4096)
+                    if not data:
+                        break
+                    try:
+                        self.mp3_q.put(data, timeout=1.0)
+                    except queue.Full:
+                        # Drop oldest to keep queue fresh
+                        try:
+                            self.mp3_q.get_nowait()
+                        except queue.Empty:
+                            pass
+                        self.mp3_q.put_nowait(data)
+            except Exception:
+                pass
+
+        threading.Thread(target=stderr_logger, daemon=True, name="ffmpeg-err").start()
+        self._feed_t = threading.Thread(target=feeder, daemon=True, name="ffmpeg-feed")
+        self._read_t = threading.Thread(target=reader, daemon=True, name="ffmpeg-read")
+        self._feed_t.start()
+        self._read_t.start()
+        logger.info("Live transcoder started (pre-warming)")
+
+    def _do_stop(self):
+        if self._stop:
+            self._stop.set()
+        if self._sub_q:
+            decoder.stream_bus.unsubscribe(self._sub_q)
+            self._sub_q = None
+        if self._proc:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=3)
+            except Exception:
+                try:
+                    self._proc.kill()
+                except Exception:
+                    pass
+            self._proc = None
+        self.mp3_q = None
+        logger.info("Live transcoder stopped")
+
+
+import queue
+import threading
+
+_live_transcoder = _LiveTranscoder()
+
+
+@app.route("/api/audio/live")
+def api_audio_live():
+    """Stream live Line In audio as MP3.
+
+    The transcoder is pre-started by the stack manager when alert sounds
+    begin, so MP3 data is already buffered when the media player connects.
+    If not yet running, starts it on demand.
+    """
+    _live_transcoder.start()  # idempotent — no-op if already running
+    mp3_q = _live_transcoder.mp3_q
+    if mp3_q is None:
+        return "Transcoder not available", 503
 
     def generate():
         try:
@@ -1144,25 +1201,22 @@ def api_audio_live():
                 try:
                     data = mp3_q.get(timeout=3.0)
                     yield data
-                except _queue.Empty:
-                    # No data for 3s — ffmpeg may have died
-                    if not read_t.is_alive():
+                except queue.Empty:
+                    if not _live_transcoder.running:
                         return
         except GeneratorExit:
             pass
-        finally:
-            stop.set()
-            decoder.stream_bus.unsubscribe(sub_q)
-            try:
-                proc.terminate()
-                proc.wait(timeout=3)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
 
     return app.response_class(
+        generate(),
+        mimetype="audio/mpeg",
+        headers={
+            "Cache-Control":       "no-store",
+            "X-Accel-Buffering":   "no",
+            "Connection":          "keep-alive",
+            "icy-name":            "Station Assistant Line In",
+        },
+    )
         generate(),
         mimetype="audio/mpeg",
         headers={

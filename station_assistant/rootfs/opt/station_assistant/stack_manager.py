@@ -44,6 +44,7 @@ class StackManager:
         self.sa_config = sa_config
         self._alert_cb: Optional[Callable] = None
         self._idle_cb:  Optional[Callable] = None
+        self._prewarm_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -67,6 +68,10 @@ class StackManager:
     def set_idle_callback(self, fn: Callable) -> None:
         """Register function called when the board returns to idle."""
         self._idle_cb = fn
+
+    def set_prewarm_callback(self, fn: Callable) -> None:
+        """Register function called to pre-warm the live transcoder."""
+        self._prewarm_cb = fn
 
     def on_tone_detected(self, seq: dict, confidence: float) -> None:
         """
@@ -227,6 +232,15 @@ class StackManager:
             )
         except Exception as e:
             logger.error("Failed to fire station_assistant_alert: %s", e)
+
+        # Pre-warm the live transcoder so MP3 data is ready when the
+        # media player connects after alert sounds finish.
+        cfg_line_in = float(cfg.get("line_in_duration", 0))
+        if cfg_line_in > 0 and self._prewarm_cb:
+            try:
+                self._prewarm_cb()
+            except Exception as e:
+                logger.warning("Transcoder pre-warm failed: %s", e)
 
         # Spawn audio thread — non-blocking
         threading.Thread(
