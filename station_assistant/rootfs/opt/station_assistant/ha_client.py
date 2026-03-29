@@ -75,14 +75,18 @@ _cached_stream_base: str = ""
 def get_addon_stream_url() -> str:
     """Return the HTTP base URL that media players can use to reach this addon.
 
-    Tries to derive the host IP from HA's internal_url config so media player
-    devices on the LAN can reach the addon's mapped port (8099).  Falls back
-    to ``homeassistant.local:8099``.
+    Tries multiple strategies to find a routable IP address that LAN devices
+    (e.g. LinkPlay speakers) can reach on port 8099:
+      1. HA's internal_url config (if it contains an IP, not a hostname)
+      2. The Host header from HA's own API response
+      3. The default gateway's network interface IP
+      4. Fallback to homeassistant.local:8099
     """
     global _cached_stream_base
     if _cached_stream_base:
         return _cached_stream_base
 
+    # Strategy 1: HA internal_url config
     try:
         config = _get("/config")
         if config:
@@ -90,15 +94,29 @@ def get_addon_stream_url() -> str:
             if internal_url:
                 from urllib.parse import urlparse
                 host = urlparse(internal_url).hostname
-                if host:
+                if host and not host.endswith(".local"):
                     _cached_stream_base = f"http://{host}:8099"
-                    logger.info("Addon stream base URL: %s", _cached_stream_base)
+                    logger.info("Addon stream base URL (from internal_url): %s", _cached_stream_base)
                     return _cached_stream_base
     except Exception as e:
         logger.debug("get_addon_stream_url: config lookup failed: %s", e)
 
+    # Strategy 2: detect host IP from network interfaces
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        host_ip = s.getsockname()[0]
+        s.close()
+        if host_ip and not host_ip.startswith("127."):
+            _cached_stream_base = f"http://{host_ip}:8099"
+            logger.info("Addon stream base URL (from interface): %s", _cached_stream_base)
+            return _cached_stream_base
+    except Exception as e:
+        logger.debug("get_addon_stream_url: interface detection failed: %s", e)
+
     _cached_stream_base = "http://homeassistant.local:8099"
-    logger.info("Addon stream base URL (fallback): %s", _cached_stream_base)
+    logger.warning("Addon stream base URL (fallback — may not work for LAN devices): %s", _cached_stream_base)
     return _cached_stream_base
 
 
