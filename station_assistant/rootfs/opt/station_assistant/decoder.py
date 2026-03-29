@@ -227,12 +227,12 @@ class DecoderService:
 
     @property
     def input_gain(self) -> float:
-        """Current input gain as a float 0.0-1.0."""
+        """Current input gain as a float 0.0-20.0."""
         return self._input_gain
 
     @input_gain.setter
     def input_gain(self, value: float):
-        self._input_gain = max(0.0, min(1.0, float(value)))
+        self._input_gain = max(0.0, min(20.0, float(value)))
 
     def start(self):
         if self._running:
@@ -295,7 +295,7 @@ class DecoderService:
         sample_rate = opts["sample_rate"]
         chunk_size = opts["chunk_size"]
         device_index = opts["audio_device_index"]
-        self._input_gain = opts.get("input_gain", 50) / 100.0  # 0-100 → 0.0-1.0
+        self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0  # 0-100 → 0.0x-20.0x
         if device_index < 0:
             device_index = None  # PyAudio uses system default
 

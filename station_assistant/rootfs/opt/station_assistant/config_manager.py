@@ -27,7 +27,7 @@ DEFAULT_OPTIONS = {
     "sample_rate": 44100,
     "chunk_size": 2048,
     "log_retention_days": 30,
-    "input_gain": 50,
+    "input_gain": 5,
 }
 
 
