@@ -210,8 +210,8 @@ _original_on_detection = decoder._on_detection
 
 
 def _patched_on_detection(seq: dict, machine) -> None:
-    # Run existing decoder logging / SSE / HA event behaviour
-    _on_decoder_detection(seq, machine)
+    decoder._total_detections += 1        # keep detection counter accurate
+    _on_decoder_detection(seq, machine)   # HA event, logging, stack manager
 
 
 decoder._on_detection = _patched_on_detection
