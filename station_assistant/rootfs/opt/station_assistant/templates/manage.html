@@ -524,8 +524,15 @@
         <div class="form-row">
           <label>Detection Threshold <span class="label-hint">(0.01–1.0)</span></label>
           <input id="f-threshold" type="number" step="0.01" min="0.01" max="1.0" value="0.15">
-          <div class="form-hint">Lower number = more forgiving (detects weaker tones). Start at 0.05 and lower if tones aren't triggering.</div>
+          <div class="form-hint">Minimum Goertzel magnitude to recognize an active tone. Start at 0.05–0.15; lower only if the audio signal is genuinely weak. A 0.25 s dropout grace period prevents brief signal dips from cancelling an in-progress detection.</div>
         </div>
+        <div class="form-row">
+          <label>Tone Confirmation Threshold <span class="label-hint">(10%–100%)</span></label>
+          <input id="f-confirm-ratio" type="number" step="1" min="10" max="100" value="70">
+          <div class="form-hint">How much of each tone's configured duration must elapse before it is confirmed (default 70%). Lower values confirm faster but may accept shorter transmissions.</div>
+        </div>
+      </div>
+      <div class="form-grid-2">
         <div class="form-row">
           <label>Auto-Reset (seconds)</label>
           <input id="f-reset" type="number" step="1" min="5" max="300" value="30">
@@ -816,6 +823,7 @@ async function openAddModal() {
   $('f-t2hz').value      = '';
   $('f-t2dur').value     = '3.0';
   $('f-threshold').value = '0.15';
+  $('f-confirm-ratio').value = '70';
   $('f-reset').value     = '30';
   $('f-enabled').checked = true;
   $('f-alert-color').value = '#8b1a1a';
@@ -841,6 +849,7 @@ async function openEditModal(id) {
   $('f-t2hz').value      = seq.tone2_hz;
   $('f-t2dur').value     = seq.tone2_duration || 3.0;
   $('f-threshold').value = seq.threshold || 0.15;
+  $('f-confirm-ratio').value = Math.round((seq.confirm_ratio || 0.70) * 100);
   $('f-reset').value     = seq.auto_reset_seconds || 30;
   $('f-enabled').checked = seq.enabled !== false;
   $('f-alert-color').value = seq.alert_color || '#8b1a1a';
@@ -910,6 +919,7 @@ async function saveSequence() {
     tone2_hz:           parseFloat($('f-t2hz').value),
     tone2_duration:     parseFloat($('f-t2dur').value),
     threshold:          parseFloat($('f-threshold').value),
+    confirm_ratio:      parseFloat($('f-confirm-ratio').value) / 100,
     auto_reset_seconds: parseInt($('f-reset').value),
     enabled:            $('f-enabled').checked,
     sound_1:            $('f-sound1').value,

@@ -20,8 +20,10 @@ def goertzel_magnitude(samples: np.ndarray, target_freq: float, sample_rate: int
     Returns:
         Normalized magnitude as a float >= 0.0.
         Typical noise floor: 0.001–0.010
-        Typical tone present: 0.10–1.0+
-        Use 0.10–0.20 as a starting detection threshold.
+        Typical tone present: 0.01–0.25 (scales with signal amplitude squared;
+            a full-scale sine wave in [-1, 1] produces a maximum of ~0.25)
+        Use 0.05–0.15 as a starting detection threshold and lower only if
+        tones are genuinely weak at the audio input.
     """
     n = len(samples)
     if n == 0:

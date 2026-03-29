@@ -41,6 +41,10 @@ COOLDOWN        = "cooldown"
 CONFIRM_RATIO = 0.70
 # Maximum gap between tone1 ending and tone2 starting (seconds)
 INTER_TONE_TIMEOUT = 4.0
+# How long a tone may drop below threshold before detection resets (seconds).
+# Brief signal dips from fading, interference, or AGC oscillation are ignored
+# within this window so users don't need to set thresholds near the noise floor.
+DROPOUT_TOLERANCE = 0.25
 
 
 class SequenceMachine:
@@ -56,6 +60,8 @@ class SequenceMachine:
         self.tone2_start: float = 0.0
         self.inter_tone_start: float = 0.0
         self.cooldown_start: float = 0.0
+        self.tone1_drop_start: float | None = None
+        self.tone2_drop_start: float | None = None
         self.last_t1_mag: float = 0.0
         self.last_t2_mag: float = 0.0
         self.last_confidence: float = 0.0
@@ -68,6 +74,7 @@ class SequenceMachine:
         self.last_t1_mag = t1_mag
         self.last_t2_mag = t2_mag
         threshold = self.seq["threshold"]
+        confirm_ratio = self.seq.get("confirm_ratio", CONFIRM_RATIO)
         t1_active = t1_mag >= threshold
         t2_active = t2_mag >= threshold
 
@@ -75,14 +82,20 @@ class SequenceMachine:
             if t1_active:
                 self.state = TONE1_DETECTING
                 self.tone1_start = now
+                self.tone1_drop_start = None
 
         elif self.state == TONE1_DETECTING:
             if not t1_active:
-                # Tone 1 dropped before confirmation — reset
-                self.state = IDLE
+                # Allow brief dropouts before resetting — real radio audio
+                # has momentary dips from fading and interference.
+                if self.tone1_drop_start is None:
+                    self.tone1_drop_start = now
+                elif (now - self.tone1_drop_start) >= DROPOUT_TOLERANCE:
+                    self.state = IDLE
             else:
+                self.tone1_drop_start = None
                 elapsed = now - self.tone1_start
-                required = self.seq["tone1_duration"] * CONFIRM_RATIO
+                required = self.seq["tone1_duration"] * confirm_ratio
                 if elapsed >= required:
                     self.state = TONE1_CONFIRMED
                     self.inter_tone_start = now
@@ -92,18 +105,24 @@ class SequenceMachine:
             if t2_active:
                 self.state = TONE2_DETECTING
                 self.tone2_start = now
+                self.tone2_drop_start = None
             elif (now - self.inter_tone_start) > INTER_TONE_TIMEOUT:
                 logger.debug("[%s] Inter-tone timeout, resetting", self.seq["name"])
                 self.state = IDLE
 
         elif self.state == TONE2_DETECTING:
             if not t2_active:
-                # Tone 2 dropped before confirmation — reset
-                logger.debug("[%s] Tone 2 dropped before confirmation, resetting", self.seq["name"])
-                self.state = IDLE
+                # Allow brief dropouts before resetting — real radio audio
+                # has momentary dips from fading and interference.
+                if self.tone2_drop_start is None:
+                    self.tone2_drop_start = now
+                elif (now - self.tone2_drop_start) >= DROPOUT_TOLERANCE:
+                    logger.debug("[%s] Tone 2 dropped before confirmation, resetting", self.seq["name"])
+                    self.state = IDLE
             else:
+                self.tone2_drop_start = None
                 elapsed = now - self.tone2_start
-                required = self.seq["tone2_duration"] * CONFIRM_RATIO
+                required = self.seq["tone2_duration"] * confirm_ratio
                 if elapsed >= required:
                     # ✅ FULL SEQUENCE DETECTED
                     self.last_confidence = self._calculate_confidence(
@@ -143,6 +162,8 @@ class SequenceMachine:
 
     def reset(self):
         self.state = IDLE
+        self.tone1_drop_start = None
+        self.tone2_drop_start = None
 
     def update_sequence(self, seq: dict):
         """Hot-reload sequence parameters without losing state."""
