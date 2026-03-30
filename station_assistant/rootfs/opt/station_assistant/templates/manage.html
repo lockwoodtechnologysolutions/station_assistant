@@ -183,12 +183,10 @@
   </div>
   <div class="header-right">
     <a class="header-dash-link" id="dash-link" href="#">🖥 Alert Board</a>
-    <button id="line-in-toggle" class="btn btn-icon btn-sm" onclick="toggleLineIn()" title="Monitor Line In audio" style="font-size:16px;padding:4px 8px;cursor:pointer">🔇</button>
     <span id="ha-badge"  class="badge badge-unknown">HA: Checking…</span>
     <span id="dec-badge" class="badge badge-unknown">Audio: Checking…</span>
   </div>
 </header>
-<audio id="line-in-audio" style="display:none"></audio>
 
 <!-- ═══ Tab Nav ══════════════════════════════════════════════════════════════ -->
 <nav class="tab-nav">
@@ -1465,28 +1463,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(updateBadges, 15000);
 });
 
-// ════════════════════════════════════════════════════════════════════════════
-// LINE IN MONITOR (speaker icon in header)
-// ════════════════════════════════════════════════════════════════════════════
 
-let lineInActive = false;
-function toggleLineIn() {
-  const audio = document.getElementById('line-in-audio');
-  const btn   = document.getElementById('line-in-toggle');
-  if (lineInActive) {
-    audio.pause();
-    audio.src = '';
-    btn.textContent = '\uD83D\uDD07';  // muted speaker
-    btn.title = 'Monitor Line In audio';
-    lineInActive = false;
-  } else {
-    audio.src = SCRIPT_ROOT + '/api/audio/live';
-    audio.play().catch(() => {});
-    btn.textContent = '\uD83D\uDD0A';  // speaker with sound
-    btn.title = 'Mute Line In audio';
-    lineInActive = true;
-  }
-}
 </script>
 <footer class="app-footer">
   Lockwood Technology Solutions
