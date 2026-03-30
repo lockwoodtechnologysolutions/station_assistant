@@ -1,6 +1,6 @@
 name: "Station Assistant"
 description: "Fire station alerting for Home Assistant. Two-tone paging decoder with stacked dispatch display, alert dashboard, and weather integration."
-version: "1.3.2"
+version: "2.0.0"
 slug: "station_assistant"
 url: "https://github.com/lockwoodtechnologysolutions/station_assistant"
 arch:

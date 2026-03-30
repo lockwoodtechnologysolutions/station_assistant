@@ -52,7 +52,7 @@ from stack_manager import StackManager
 BASE_DIR = Path(__file__).parent
 
 # Keep this in sync with config.yaml version field
-APP_VERSION = "1.3.2"
+APP_VERSION = "2.0.0"
 
 app = Flask(
     __name__,

@@ -12,15 +12,16 @@ Every Department deserves professional station alerting—not just those with bi
 
 
 
-![Version](https://img.shields.io/badge/version-1.3.2-blue) ![HA Addon](https://img.shields.io/badge/Home%20Assistant-Addon-41BDF5) ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64%20%7C%20armv7%20%7C%20armhf-lightgrey)
+![Version](https://img.shields.io/badge/version-2.0.0-blue) ![HA Addon](https://img.shields.io/badge/Home%20Assistant-Addon-41BDF5) ![Architectures](https://img.shields.io/badge/arch-amd64%20%7C%20aarch64%20%7C%20armv7%20%7C%20armhf-lightgrey)
 
 ---
 
 ## Features
 
-### 📟 Two-Tone Decoder
+### Two-Tone Decoder
 - Real-time Goertzel algorithm decodes A/B sequential tone pairs from a USB audio device (radio, pager, scanner audio source)
-- Configurable frequency tolerance, detection threshold, and input gain (0–20×)
+- Configurable frequency tolerance, detection threshold, and input gain (0-20x, default 1.0x unity)
+- Dual VU meters: pre-gain (true hardware input level) and post-gain (what the decoder analyzes)
 - Duplicate cooldown prevents repeated triggers from the same page
 - Adjustable page sequence gap — waits for tone completion before triggering audio
 
@@ -38,13 +39,15 @@ Every Department deserves professional station alerting—not just those with bi
 
 
 
-### 🚨 Alert Dashboard
+### Alert Dashboard
 - Full-screen kiosk-style display, accessible without Home Assistant login (direct on port 8099)
 - Available via any browser on same network at http://x.x.x.x:8099/dashboard
 - Perfect for large video displays in watch office, day room, apparatus bay, etc
 - Shows dispatched unit name, icon, and custom alert color
 - Multi-unit stacking — multiple tones in a configurable window stack on one screen
-- Elapsed timer and countdown return-to-idle bar
+- Single-unit dispatches start the return timer immediately (no waiting for stack window)
+- Elapsed timer and synchronized countdown return-to-idle bar
+- GPU-composited alert border animation — smooth on low-power devices (RPi kiosks)
 - Dark / light mode toggle (preference saved in browser)
 
 Standby Dashboard
@@ -60,12 +63,28 @@ Stacked Pages (Multi Apparatus Call)
 Visual Indication When Offline
 <img width="1428" height="532" alt="image" src="https://github.com/user-attachments/assets/6f534336-e961-458c-9fbf-c2e34b44bee9" />
 
-### 🌤️ Weather Integration
+### Gapless Audio Playback
+- All alert sound files (ramp-up + apparatus tones) are concatenated into a single MP3 via ffmpeg before playback
+- Eliminates buffering delays between files on network media players (LinkPlay, Arylic, Sonos, Google Cast, etc.)
+- Supports both MP3 and WAV sound file uploads
+- All files re-encoded to 44.1kHz mono for universal media player compatibility
+- Duration-based playback timing reads file length from the filesystem for accurate sequencing
+
+### Live PA (Line In Audio Relay)
+- After alert sounds finish, relays live Line In audio to media players via real-time MP3 stream
+- Personnel hear the dispatch voice message on station speakers without being near the radio
+- Configurable relay duration (30 seconds to 5 minutes, or disabled)
+- Pre-warms the ffmpeg transcoder during alert sound playback for minimal startup delay
+- Per-client stream queues ensure each media player device receives a complete audio stream
+- Configurable Stream Base URL in Settings for network routing
+
+### Weather Integration
 - Pulls live conditions from any Home Assistant weather entity
 - Displays temperature, condition, humidity, wind, hi/lo, and 4-hour forecast
+- Dynamically sized weather card on the Alert Dashboard
 - Can be enabled/disabled in settings
 
-### 🔔 Paging Sequences
+### Paging Sequences
 - Supports 5 Paging Sequences, each with:
   - Tone A + Tone B frequency pair
   - Up to 3 audio files (ramp-up, apparatus tone 1, apparatus tone 2)
@@ -76,8 +95,8 @@ Visual Indication When Offline
 
 <img width="2117" height="795" alt="image" src="https://github.com/user-attachments/assets/0e70487a-e7cd-4091-a510-11b5a7cd40b2" />
 
-### 🏠 Home Assistant Integration
-- Fires `two_tone_decoded` events on detection for use in automations
+### Home Assistant Integration
+- Fires `two_tone_decoded` and `station_assistant_alert` events on detection for use in automations
 - Auto-creates and manages HA automations for each sequence
 - Pushes two live HA sensor entities:
   - `sensor.station_assistant_decoder` — decoder status (listening / error / stopped)
@@ -88,7 +107,7 @@ Visual Indication When Offline
 
 **Benefits of Home Assistant Integration:**
 
-- Massive device ecosystem - <a href="https://www.home-assistant.io/integrations/?brands=featured">Over 2,000+ integrations available</a> out of the box; if a device has an API or speaks a standard protocol (Z-Wave, Zigbee, MQTT, WiFi), Home Assistant can control it 
+- Massive device ecosystem - <a href="https://www.home-assistant.io/integrations/?brands=featured">Over 2,000+ integrations available</a> out of the box; if a device has an API or speaks a standard protocol (Z-Wave, Zigbee, MQTT, WiFi), Home Assistant can control it
 - No vendor lock-in - Mix and match devices from different manufacturers; not forced to buy everything from one brand or pay recurring subscriptions to multiple vendors
 - Local control by design - All automation logic runs on your local network; devices work even when internet is down, no cloud outages can take down your station alerting
 - Use hardware you already own - Already have smart switches, thermostats, or cameras? Integrate them immediately instead of ripping out working equipment
@@ -102,24 +121,25 @@ Visual Indication When Offline
 <img width="2040" height="1740" alt="image" src="https://github.com/user-attachments/assets/f21a6487-effb-4c49-91a9-31b112246bf9" />
 
 
-### 📡 Audio Monitor
-- Live real-time audio level meter (dBFS)
-- Goertzel frequency cards showing per-frequency signal strength
+### Audio Monitor
+- Dual VU meters: Input Level (pre-gain true hardware signal) and Decoder Level (post-gain signal fed to Goertzel)
+- Live Goertzel frequency cards showing per-frequency signal strength
+- Peak frequency detection via FFT
 - Visual card flash on tone detection
 - Start/stop monitoring without leaving the browser
 
 <img width="1795" height="706" alt="image" src="https://github.com/user-attachments/assets/a69ec79a-bd70-4958-b612-e23e117da72f" />
 
-### 📋 Detection Log
+### Detection Log
 - SQLite-backed history of all decoded pages
 - Configurable retention (default 30 days)
 
 <img width="1772" height="1160" alt="image" src="https://github.com/user-attachments/assets/42ea7dbe-608f-4ff5-a6f3-3e66ee2f4da7" />
 
-## 📦 Installation
+## Installation
 
-1. In Home Assistant, go to **Settings → Add-ons → Add-on Store**
-2. Click the menu (⋮) → **Repositories** → add this repo URL:
+1. In Home Assistant, go to **Settings > Add-ons > Add-on Store**
+2. Click the menu > **Repositories** > add this repo URL:
    ```
    https://github.com/lockwoodtechnologysolutions/station_assistant
    ```
@@ -129,7 +149,7 @@ Visual Indication When Offline
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 These options are set in the addon's **Configuration** tab in Home Assistant:
 
@@ -138,22 +158,23 @@ These options are set in the addon's **Configuration** tab in Home Assistant:
 | `audio_device_index` | `-1` | Index of the USB audio input device. Use `-1` to auto-detect, or check the Audio Monitor tab for device list. |
 | `sample_rate` | `44100` | Audio sample rate in Hz. |
 | `chunk_size` | `2048` | Audio buffer chunk size. |
-| `input_gain` | `50` | Input gain (0–100 maps to 0.0×–1.0× scaling; 100 = unity gain, 50 = half-level attenuation). Use to tame hot input signals. |
+| `input_gain` | `5` | Input gain slider (0-100). Maps to 0.0x-20.0x gain. Default 5 = 1.0x unity gain. Increase for weak input signals. |
 | `log_retention_days` | `30` | Days to keep detection history. |
 
-Station-level settings (department name, weather entity, sound files, etc.) are configured through the addon's **Settings** tab in the web UI.
+Station-level settings (department name, weather entity, sound files, Live PA, timing) are configured through the addon's **Settings** tab in the web UI.
 
 ---
 
-## 🖥️ Hardware Requirements
+## Hardware Requirements
 
-- A USB audio input device (generic USB sound card, RTL-SDR with audio pipe, etc.)
+- A USB audio input device (generic USB sound card, ~$10)
 - Your station's scanner or radio receiver connected to the audio input
 - Home Assistant OS or Supervised installation
+- Network media players for audio playback (Sonos, LinkPlay/Arylic, Google Cast, etc.)
 
 ---
 
-## 🧙 Setup Wizard
+## Setup Wizard
 
 On first launch, Station Assistant walks you through:
 1. Department and station name
@@ -163,46 +184,52 @@ On first launch, Station Assistant walks you through:
 
 ---
 
-## 🌐 Ports
+## Ports
 
 | Port | Description |
 |------|-------------|
-| `8099` | Alert Dashboard — accessible directly without HA authentication. Suitable for dedicated kiosk/display devices. |  http://x.x.x.x:8099/dashboard
+| `8099` | Alert Dashboard — accessible directly without HA authentication at `http://your-ha-ip:8099/dashboard` |
 
 The management UI (Sequences, Audio Monitor, Detection Log, Settings) is accessed via Home Assistant Ingress and requires HA authentication.
 
 ---
 
-## 🔗 Architecture
+## Architecture
 
 ```
 goertzel.py         NumPy vectorized Goertzel frequency detector
 decoder.py          PyAudio callback loop, SequenceMachine state machine,
+                    AudioStreamBus for live audio pub/sub,
                     auto-restart watchdog, confidence scoring
 config_manager.py   Sequence CRUD — /data/sequences.json
 detection_log.py    SQLite detection history — /data/detections.db
-ha_client.py        HA REST API — events, automations, sensors
+ha_client.py        HA REST API — events, automations, sensors,
+                    sound file concatenation via ffmpeg,
+                    MP3/WAV duration reader, media playback
 sa_config.py        Station config — /data/sa_config.json
-stack_manager.py    Multi-unit stacking, audio playback queue, SSE emitter
+stack_manager.py    Multi-unit stacking, audio playback queue,
+                    Live PA relay, SSE emitter
 sse.py              Server-Sent Events bus
-main.py             Flask application, all HTTP routes
+main.py             Flask application, all HTTP routes,
+                    Live audio transcoder (PCM → MP3 via ffmpeg)
 templates/
   dashboard.html    Full-screen alert dashboard (kiosk)
   manage.html       Management UI (sequences, monitor, log, settings)
   setup.html        First-run setup wizard
+  status.html       Status page
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Runtime:** Python 3.11 on Alpine Linux
 - **Web:** Flask + Flask-SocketIO + Gunicorn + Eventlet
-- **Audio:** PyAudio + NumPy (Goertzel)
+- **Audio:** PyAudio + NumPy (Goertzel) + ffmpeg (concatenation & transcoding)
 - **Storage:** SQLite (detections), JSON flat files (config/sequences)
 - **Process supervisor:** s6-overlay
 
-## 🚀 Enterprise Options
+## Enterprise Options
 Station Assistant is the free, open-source foundation of our alerting platform. For departments requiring:
 
 - Multi-station deployments with centralized management
@@ -213,7 +240,7 @@ Station Assistant is the free, open-source foundation of our alerting platform. 
 
 Learn more about CoreAlert Pro at https://www.lockwood.tech or email info@lockwood.tech
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Built by firefighters, for firefighters. Station Assistant was created to provide fire departments with commercial-grade alerting capabilities without vendor lock-in or recurring costs.
 
