@@ -235,22 +235,68 @@ class SequenceMachine:
 
 # ── Audio device enumeration ───────────────────────────────────────────────────
 
+def _get_alsa_card_names() -> dict:
+    """Read ALSA card names from /proc/asound/cards.
+
+    Returns a dict mapping card number to friendly name, e.g.
+    {0: "HDA Intel PCH", 1: "USB Audio Device"}.
+    """
+    names = {}
+    try:
+        with open("/proc/asound/cards", "r") as f:
+            for line in f:
+                line = line.strip()
+                # Lines like: " 1 [Audio          ]: USB-Audio - USB Audio Device"
+                if line and line[0].isdigit():
+                    parts = line.split(":")
+                    card_num = int(line.split()[0])
+                    if len(parts) >= 2:
+                        names[card_num] = parts[-1].strip()
+    except Exception:
+        pass
+    return names
+
+
 def list_audio_devices() -> list:
     """
     Return a list of available input audio devices.
     Each item: {"index": int, "name": str, "channels": int, "sample_rate": int}
+
+    Enriches PulseAudio device names with the real ALSA hardware name
+    when available (e.g. "USB Audio Device" instead of "pulse").
     """
     if not PYAUDIO_AVAILABLE:
         return []
     try:
         pa = pyaudio.PyAudio()
+        alsa_names = _get_alsa_card_names()
         devices = []
         for i in range(pa.get_device_count()):
             info = pa.get_device_info_by_index(i)
             if info.get("maxInputChannels", 0) > 0:
+                name = info["name"]
+                # PulseAudio reports generic names like "pulse" or "default".
+                # Try to find the actual hardware name from ALSA.
+                host_api = pa.get_host_api_info_by_index(info.get("hostApi", 0))
+                host_api_name = host_api.get("name", "").lower() if host_api else ""
+                if name.lower() in ("pulse", "default") and alsa_names:
+                    # Use the first USB/external card name if available
+                    for card_num, card_name in sorted(alsa_names.items()):
+                        if card_name:
+                            name = f"{card_name} (hw:{card_num},0)"
+                            break
+                elif "hw:" in name.lower() and alsa_names:
+                    # Try to enrich "hw:1,0" style names
+                    import re
+                    m = re.search(r"hw:(\d+)", name)
+                    if m:
+                        card_num = int(m.group(1))
+                        if card_num in alsa_names:
+                            name = f"{alsa_names[card_num]} - {name}"
+
                 devices.append({
                     "index": i,
-                    "name": info["name"],
+                    "name": name,
                     "channels": info["maxInputChannels"],
                     "sample_rate": int(info["defaultSampleRate"]),
                 })
