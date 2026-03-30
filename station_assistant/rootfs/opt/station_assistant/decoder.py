@@ -27,6 +27,12 @@ from goertzel import goertzel_magnitude, rms_level, batch_goertzel
 from config_manager import get_options, get_sequences
 from ha_client import fire_two_tone_event, fire_health_event, push_decoder_sensor, push_watchdog_sensor
 from detection_log import log_detection, purge_old_records
+from constants import (
+    CONFIRM_RATIO, INTER_TONE_TIMEOUT, DROPOUT_TOLERANCE,
+    AUDIO_QUEUE_MAXSIZE, STREAM_QUEUE_MAXSIZE, GAIN_MAX,
+    RMS_SILENCE_THRESHOLD, FFT_MIN_HZ, FFT_MAX_HZ, FFT_MIN_MAGNITUDE,
+    PURGE_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +43,6 @@ TONE1_DETECTING = "tone1_detecting"
 TONE1_CONFIRMED = "tone1_confirmed"
 TONE2_DETECTING = "tone2_detecting"
 COOLDOWN        = "cooldown"
-
-# How much of the configured duration must be heard to confirm (70%)
-CONFIRM_RATIO = 0.70
-# Maximum gap between tone1 ending and tone2 starting (seconds)
-INTER_TONE_TIMEOUT = 4.0
-# How long a tone may drop below threshold before detection resets (seconds).
-# Brief signal dips from fading, interference, or AGC oscillation are ignored
-# within this window so users don't need to set thresholds near the noise floor.
-DROPOUT_TOLERANCE = 0.25
 
 
 # ── Live audio streaming bus ─────────────────────────────────────────────────
@@ -64,7 +61,7 @@ class AudioStreamBus:
         self.sample_rate: int = 44100  # updated by decoder on stream open
 
     def subscribe(self) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=200)
+        q: queue.Queue = queue.Queue(maxsize=STREAM_QUEUE_MAXSIZE)
         with self._lock:
             self._subscribers.append(q)
         logger.debug("AudioStreamBus: subscriber added (%d total)", len(self._subscribers))
@@ -273,9 +270,10 @@ class DecoderService:
     drives per-sequence state machines → fires HA events on detection.
     """
 
-    def __init__(self, sse_bus):
+    def __init__(self, sse_bus, on_detection_callback=None):
         self.sse_bus = sse_bus
         self.stream_bus = AudioStreamBus()
+        self._on_detection_callback = on_detection_callback
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._running = False
@@ -295,12 +293,12 @@ class DecoderService:
 
     @property
     def input_gain(self) -> float:
-        """Current input gain as a float 0.0-20.0."""
+        """Current input gain as a float 0.0-GAIN_MAX."""
         return self._input_gain
 
     @input_gain.setter
     def input_gain(self, value: float):
-        self._input_gain = max(0.0, min(20.0, float(value)))
+        self._input_gain = max(0.0, min(GAIN_MAX, float(value)))
 
     def start(self):
         if self._running:
@@ -391,7 +389,7 @@ class DecoderService:
                 logger.info("Overriding sample_rate %d → %d (device native rate)", sample_rate, native_rate)
                 sample_rate = native_rate
 
-        audio_queue: queue.Queue = queue.Queue(maxsize=20)
+        audio_queue: queue.Queue = queue.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
 
         def audio_callback(in_data, frame_count, time_info, status):
             if not audio_queue.full():
@@ -423,7 +421,7 @@ class DecoderService:
             # Run the purge loop periodically alongside audio processing
             last_purge = time.time()
             last_watchdog = time.time()
-            PURGE_INTERVAL = 3600  # purge old records every hour
+            PURGE_INTERVAL = PURGE_INTERVAL_SECONDS
             WATCHDOG_INTERVAL = 60  # push heartbeat every 60 seconds
 
             while not self._stop_event.is_set() and stream.is_active():
@@ -590,10 +588,17 @@ class DecoderService:
 
         logger.info("Detection fired: %s (confidence=%.2f)", seq["name"], confidence)
 
+        # External callback (e.g. stack manager wiring in main.py)
+        if self._on_detection_callback:
+            try:
+                self._on_detection_callback(seq, confidence, detected_at)
+            except Exception as e:
+                logger.error("Detection callback error: %s", e)
+
     def _emit_peak_frequency(self, samples: np.ndarray, sample_rate: int, rms: float):
         """Run FFT to find the dominant frequency in the audio chunk."""
         # Skip if signal is too quiet (avoid reporting noise as a tone)
-        if rms < 0.005:
+        if rms < RMS_SILENCE_THRESHOLD:
             self._last_peak_freq = 0.0
             self._last_peak_mag = 0.0
             self.sse_bus.emit("peak_frequency", {"freq": 0, "magnitude": 0})
@@ -605,8 +610,8 @@ class DecoderService:
 
         # Ignore DC (bin 0) and frequencies below 100 Hz / above 4000 Hz
         freq_per_bin = sample_rate / n
-        min_bin = max(1, int(100 / freq_per_bin))
-        max_bin = min(len(fft_mag) - 1, int(4000 / freq_per_bin))
+        min_bin = max(1, int(FFT_MIN_HZ / freq_per_bin))
+        max_bin = min(len(fft_mag) - 1, int(FFT_MAX_HZ / freq_per_bin))
 
         if min_bin >= max_bin:
             self._last_peak_freq = 0.0
@@ -622,7 +627,7 @@ class DecoderService:
         norm_mag = peak_mag / (n / 2)
 
         # Only report if magnitude is meaningful
-        if norm_mag < 0.01:
+        if norm_mag < FFT_MIN_MAGNITUDE:
             self._last_peak_freq = 0.0
             self._last_peak_mag = 0.0
             self.sse_bus.emit("peak_frequency", {"freq": 0, "magnitude": 0})

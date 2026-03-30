@@ -15,12 +15,17 @@ Adds station_assistant_alert events for the new unified dashboard.
 import eventlet
 eventlet.monkey_patch()
 
+import json
 import logging
+import math
 import os
-import sys
-import time
 import queue
+import shutil
+import subprocess
+import sys
 import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Logging ────────────────────────────────────────────────────────────────────
@@ -33,26 +38,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── Flask + SocketIO ───────────────────────────────────────────────────────────
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, send_file
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 
-# ── Existing decoder modules (kept exactly as-is) ──────────────────────────────
 import detection_log as dl
 import config_manager as cm
 import ha_client as ha
-from decoder import DecoderService
+from decoder import DecoderService, list_audio_devices
 from sse import SSEBus
-
-# ── Station Assistant modules ──────────────────────────────────────────────────
 from sa_config import SAConfig
 from stack_manager import StackManager
+from transcoder import LiveTranscoder
+from constants import APP_VERSION, MAX_SEQUENCES, SSE_KEEPALIVE_TIMEOUT
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
-
-# Keep this in sync with config.yaml version field
-APP_VERSION = "2.0.0"
 
 app = Flask(
     __name__,
@@ -160,62 +161,29 @@ def _guard_direct_access():
 @app.context_processor
 def _inject_script_root():
     """Make {{ script_root }} and {{ app_version }} available in all templates."""
-    from flask import request as _req
     return {
-        "script_root": _req.environ.get("HTTP_X_INGRESS_PATH", ""),
+        "script_root": request.environ.get("HTTP_X_INGRESS_PATH", ""),
         "app_version": APP_VERSION,
     }
 
 # ── Global services ────────────────────────────────────────────────────────────
-sa_config   = SAConfig()
-sse_bus     = SSEBus()          # Existing SSE bus (kept for backwards compat)
-stack_mgr   = StackManager(sa_config)
-decoder     = DecoderService(sse_bus)
+sa_config = SAConfig()
+sse_bus   = SSEBus()
+stack_mgr = StackManager(sa_config)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# DECODER ↔ STACK MANAGER WIRING
-# ══════════════════════════════════════════════════════════════════════════════
+def _on_decoder_detection(seq: dict, confidence: float, detected_at: str) -> None:
+    """Called by DecoderService after each confirmed detection.
 
-def _on_decoder_detection(seq: dict, machine) -> None:
+    The decoder already handles HA events, SQLite logging, and SSE emission.
+    This callback only adds the stack manager layer for incident accumulation
+    and dashboard broadcast.
     """
-    Injected into DecoderService._on_detection.
-    Called on the decoder thread when a full tone sequence is confirmed.
-    Chains to the existing ha_client event AND the new stacking layer.
-    """
-    confidence  = machine.last_confidence
-    detected_at = _now_utc()
-
-    # ① Keep the existing two_tone_decoded event (existing automations work)
-    ha.fire_two_tone_event(seq, confidence, detected_at)
-
-    # ② Log to SQLite (existing behaviour)
-    dl.log_detection(seq, confidence, detected_at)
-
-    # ③ Notify existing SSE bus (existing UI if anyone uses it)
-    sse_bus.emit("detection", {
-        "seq_id":     seq["id"],
-        "name":       seq["name"],
-        "slug":       seq["slug"],
-        "confidence": round(confidence, 3),
-        "detected_at": detected_at,
-    })
-
-    # ④ Pass to stack manager → fires station_assistant_alert + socket broadcast
     stack_mgr.on_tone_detected(seq, confidence)
 
 
-# Monkey-patch the decoder's _on_detection so our callback fires
-# without modifying decoder.py itself.
-_original_on_detection = decoder._on_detection
-
-
-def _patched_on_detection(seq: dict, machine) -> None:
-    decoder._total_detections += 1        # keep detection counter accurate
-    _on_decoder_detection(seq, machine)   # HA event, logging, stack manager
-
-
-decoder._on_detection = _patched_on_detection
+decoder = DecoderService(sse_bus, on_detection_callback=_on_decoder_detection)
+_live_transcoder = LiveTranscoder(decoder.stream_bus)
 
 
 # ── Stack manager callbacks → SocketIO broadcast ──────────────────────────────
@@ -336,7 +304,6 @@ def api_weather_entities():
 def api_audio_devices():
     """Return available audio input devices — always enumerate fresh."""
     try:
-        from decoder import list_audio_devices
         devices = list_audio_devices()  # always fresh; cache may predate USB attach
         result = [
             {
@@ -419,7 +386,7 @@ def api_activate():
 
         for seq_data in tone_defs:
             # Hard limit: maximum 5 paging sequences
-            if len(cm.get_sequences()) >= 5:
+            if len(cm.get_sequences()) >= MAX_SEQUENCES:
                 logger.warning("Sequence limit reached (5) — skipping additional sequences")
                 break
             existing = cm.get_sequences()
@@ -463,8 +430,7 @@ def api_activate():
             for dst in (sounds_dst_www, sounds_dst_media):
                 dst.mkdir(parents=True, exist_ok=True)
                 for mp3 in sounds_src.glob("*.mp3"):
-                    import shutil as _sh
-                    _sh.copy2(mp3, dst / mp3.name)
+                    shutil.copy2(mp3, dst / mp3.name)
             logger.info("Copied sounds to %s and %s", sounds_dst_www, sounds_dst_media)
         except Exception as e:
             logger.warning("Could not copy all sounds: %s", e)
@@ -502,7 +468,7 @@ def api_reset():
 @app.route("/api/setup/upload_logo", methods=["POST"])
 def api_upload_logo():
     """Upload department logo/patch. Stored at /data/dept_logo.<ext>."""
-    from flask import send_file as _sf
+
     if "logo" not in request.files:
         return jsonify({"status": "error", "message": "No file provided"}), 400
     file = request.files["logo"]
@@ -525,11 +491,11 @@ def api_upload_logo():
 @app.route("/api/logo")
 def api_logo():
     """Serve the stored department logo."""
-    from flask import send_file as _sf
+
     for ext in [".png", ".webp", ".jpg", ".jpeg", ".svg"]:
         p = Path("/data") / f"dept_logo{ext}"
         if p.exists():
-            return _sf(str(p))
+            return send_file(str(p))
     return "", 404
 
 
@@ -581,7 +547,6 @@ def api_upload_sound():
     /config/www/station_assistant/sounds/ (/local/ URL) and
     /media/station_assistant/ (HA Media Browser).
     """
-    import shutil as _sh
     if "sound" not in request.files:
         return jsonify({"status": "error", "message": "No file provided"}), 400
     file = request.files["sound"]
@@ -598,14 +563,14 @@ def api_upload_sound():
     try:
         www_dir = Path("/config/www/station_assistant/sounds")
         www_dir.mkdir(parents=True, exist_ok=True)
-        _sh.copy2(dst_bundled, www_dir / filename)
+        shutil.copy2(dst_bundled, www_dir / filename)
     except Exception as e:
         logger.warning("upload_sound: could not copy to /config/www/: %s", e)
     # Mirror to /media/station_assistant/ for HA Media Browser
     try:
         media_dir = Path("/media/station_assistant")
         media_dir.mkdir(parents=True, exist_ok=True)
-        _sh.copy2(dst_bundled, media_dir / filename)
+        shutil.copy2(dst_bundled, media_dir / filename)
     except Exception as e:
         logger.warning("upload_sound: could not copy to /media/: %s", e)
     logger.info("Custom sound uploaded: %s", filename)
@@ -615,14 +580,14 @@ def api_upload_sound():
 @app.route("/api/sounds/<path:filename>")
 def api_serve_sound(filename):
     """Serve a sound file directly so the browser can preview it."""
-    from flask import send_file as _sf
+
     safe_name = Path(filename).name   # strip any path traversal
     bundled   = BASE_DIR / "sounds" / safe_name
     if bundled.exists():
-        return _sf(str(bundled), mimetype="audio/mpeg")
+        return send_file(str(bundled), mimetype="audio/mpeg")
     media = Path("/media/station_assistant") / safe_name
     if media.exists():
-        return _sf(str(media), mimetype="audio/mpeg")
+        return send_file(str(media), mimetype="audio/mpeg")
     return jsonify({"status": "error", "message": "Sound not found"}), 404
 
 
@@ -735,7 +700,7 @@ def api_sequences_list():
 def api_sequences_create():
     data = request.get_json() or {}
     # Hard limit: maximum 5 paging sequences
-    if len(cm.get_sequences()) >= 5:
+    if len(cm.get_sequences()) >= MAX_SEQUENCES:
         return jsonify({"status": "error",
                         "message": "Maximum of 5 paging sequences allowed."}), 400
     seq, err = cm.create_sequence(data)
@@ -882,9 +847,8 @@ def api_status():
         }
 
     # Input level from decoder's last RMS reading
-    import math as _math
     rms = getattr(decoder, "_last_rms", 0.0) or 0.0
-    input_level_dbfs = round(20 * _math.log10(max(float(rms), 1e-6)), 1)
+    input_level_dbfs = round(20 * math.log10(max(float(rms), 1e-6)), 1)
 
     ha_ok, ha_msg = ha.check_ha_connection()
 
@@ -960,7 +924,6 @@ def api_audio_level():
     # happens via the SSE endpoint below.
     level = getattr(decoder, "_last_rms", 0.0)
     level_post = getattr(decoder, "_last_rms_post", 0.0)
-    import math
     dbfs = 20 * math.log10(max(level, 1e-6)) if level > 0 else -96.0
     dbfs_post = 20 * math.log10(max(level_post, 1e-6)) if level_post > 0 else -96.0
     return jsonify({
@@ -1026,8 +989,7 @@ def api_stream():
                 "running": decoder.is_running,
                 "error":   decoder.audio_error,
             }
-            import json as _json
-            yield f"event: decoder_status\ndata: {_json.dumps(initial)}\n\n"
+            yield f"event: decoder_status\ndata: {json.dumps(initial)}\n\n"
 
             while True:
                 try:
@@ -1050,158 +1012,6 @@ def api_stream():
 
 
 # ── Live audio stream (Line In relay to media players) ────────────────────────
-
-class _LiveTranscoder:
-    """Pre-spawnable ffmpeg PCM→MP3 transcoder for Line In relay.
-
-    Call ``start()`` early (when alert sounds begin playing) so ffmpeg is
-    warmed up and producing MP3 data by the time the media player connects.
-    The ``/api/audio/live`` endpoint reads from the shared ``mp3_q``.
-    """
-
-    def __init__(self):
-        self._proc = None
-        self._stop = None
-        self._sub_q = None
-        self._feed_t = None
-        self._read_t = None
-        self._lock = threading.Lock()
-        # Each media player device makes its own HTTP request to /api/audio/live,
-        # so we need per-client queues to avoid consumers stealing chunks from
-        # each other. The reader thread copies each MP3 chunk to ALL subscribers.
-        self._subscribers: list[queue.Queue] = []
-        self._sub_lock = threading.Lock()
-
-    @property
-    def running(self) -> bool:
-        return self._proc is not None and self._proc.poll() is None
-
-    def subscribe(self) -> queue.Queue:
-        """Add a per-client consumer queue."""
-        q: queue.Queue = queue.Queue(maxsize=200)
-        with self._sub_lock:
-            self._subscribers.append(q)
-        return q
-
-    def unsubscribe(self, q: queue.Queue) -> None:
-        with self._sub_lock:
-            try:
-                self._subscribers.remove(q)
-            except ValueError:
-                pass
-
-    def _publish(self, data: bytes) -> None:
-        """Copy MP3 data to every subscriber queue."""
-        with self._sub_lock:
-            dead = []
-            for q in self._subscribers:
-                try:
-                    q.put_nowait(data)
-                except queue.Full:
-                    dead.append(q)
-            for q in dead:
-                self._subscribers.remove(q)
-
-    def start(self):
-        """Spawn ffmpeg and begin transcoding. Idempotent."""
-        with self._lock:
-            if self.running:
-                return
-            self._do_start()
-
-    def stop(self):
-        """Shut down the transcoder and free resources."""
-        with self._lock:
-            self._do_stop()
-
-    def _do_start(self):
-        import subprocess as _sp
-
-        sr = decoder.stream_bus.sample_rate
-        self._sub_q = decoder.stream_bus.subscribe()
-        self._stop = threading.Event()
-
-        self._proc = _sp.Popen(
-            [
-                "ffmpeg",
-                "-hide_banner", "-loglevel", "warning",
-                "-f", "s16le", "-ar", str(sr), "-ac", "1",
-                "-i", "pipe:0",
-                "-b:a", "128k", "-f", "mp3", "pipe:1",
-            ],
-            stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE,
-        )
-
-        def stderr_logger():
-            try:
-                for line in self._proc.stderr:
-                    msg = line.decode("utf-8", errors="replace").rstrip()
-                    if msg:
-                        logger.warning("ffmpeg line-in: %s", msg)
-            except Exception:
-                pass
-
-        def feeder():
-            try:
-                while not self._stop.is_set():
-                    try:
-                        chunk = self._sub_q.get(timeout=1.0)
-                    except queue.Empty:
-                        chunk = b'\x00\x00' * 128
-                    try:
-                        self._proc.stdin.write(chunk)
-                        self._proc.stdin.flush()
-                    except (BrokenPipeError, OSError):
-                        break
-            except Exception:
-                pass
-            finally:
-                try:
-                    self._proc.stdin.close()
-                except Exception:
-                    pass
-
-        def reader():
-            try:
-                while not self._stop.is_set():
-                    data = self._proc.stdout.read(4096)
-                    if not data:
-                        break
-                    self._publish(data)
-            except Exception:
-                pass
-
-        threading.Thread(target=stderr_logger, daemon=True, name="ffmpeg-err").start()
-        self._feed_t = threading.Thread(target=feeder, daemon=True, name="ffmpeg-feed")
-        self._read_t = threading.Thread(target=reader, daemon=True, name="ffmpeg-read")
-        self._feed_t.start()
-        self._read_t.start()
-        logger.info("Live transcoder started (pre-warming)")
-
-    def _do_stop(self):
-        if self._stop:
-            self._stop.set()
-        if self._sub_q:
-            decoder.stream_bus.unsubscribe(self._sub_q)
-            self._sub_q = None
-        if self._proc:
-            try:
-                self._proc.terminate()
-                self._proc.wait(timeout=3)
-            except Exception:
-                try:
-                    self._proc.kill()
-                except Exception:
-                    pass
-            self._proc = None
-        with self._sub_lock:
-            self._subscribers.clear()
-        logger.info("Live transcoder stopped")
-
-
-
-_live_transcoder = _LiveTranscoder()
-
 
 @app.route("/api/audio/live")
 def api_audio_live():
@@ -1322,7 +1132,6 @@ def on_request_weather():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _now_utc() -> str:
-    from datetime import datetime, timezone
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

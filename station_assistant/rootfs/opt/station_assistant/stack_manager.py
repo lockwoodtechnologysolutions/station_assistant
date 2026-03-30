@@ -409,8 +409,7 @@ class StackManager:
                 logger.info("Line In relay: stopped early (idle/force)")
                 break
             step = min(0.5, duration - waited)
-            import time as _time
-            _time.sleep(step)
+            time.sleep(step)
             waited += step
 
         # Stop the media players to close the stream connection

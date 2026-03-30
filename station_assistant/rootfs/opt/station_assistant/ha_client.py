@@ -7,10 +7,15 @@ All calls go through the Supervisor proxy at http://supervisor/core/api.
 
 import os
 import struct
+import subprocess
 import logging
-import requests
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +89,7 @@ def get_addon_stream_url() -> str:
 
     # Check user-configured override first
     try:
-        from sa_config import SAConfig
+        from sa_config import SAConfig  # deferred to avoid circular import
         cfg = SAConfig().load()
         user_url = (cfg.get("stream_base_url") or "").strip().rstrip("/")
         if user_url:
@@ -100,7 +105,6 @@ def get_addon_stream_url() -> str:
         if config:
             internal_url = config.get("internal_url", "")
             if internal_url:
-                from urllib.parse import urlparse
                 host = urlparse(internal_url).hostname
                 if host:
                     _cached_stream_base = f"http://{host}:8099"
@@ -285,8 +289,6 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
     out_path = out_dir / "_combined_alert.mp3"
     concat_list = out_dir / "_concat_list.txt"
     try:
-        import subprocess
-
         # Write ffmpeg concat demuxer file list
         with open(concat_list, "w") as f:
             for p in paths:
@@ -348,13 +350,6 @@ def cleanup_combined_sound() -> None:
 
 # ── Media action helpers ───────────────────────────────────────────────────────
 
-def _build_media_actions(seq: dict) -> list:
-    """
-    Media playback is handled directly by Station Assistant's audio engine
-    (stack_manager._play_audio) after the Page Sequence Gap timer expires.
-    The HA automation retains only user-added custom actions.
-    """
-    return []
 
 
 # ── Direct media playback helpers (called by stack_manager audio thread) ───────
@@ -434,25 +429,23 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0,
     If *known_duration* is provided (seconds), sleeps for that duration
     plus a small buffer instead of polling the player state.
     """
-    import time as _time
-
     if known_duration is not None and known_duration > 0:
         sleep_for = known_duration + 0.3
         logger.debug(
             "wait_until_idle: %s sleeping %.1fs (known_duration=%.1f)",
             entity_id, sleep_for, known_duration,
         )
-        _time.sleep(sleep_for)
+        time.sleep(sleep_for)
         return True
 
     # Fallback: poll player state
-    deadline        = _time.time() + timeout
+    deadline        = time.time() + timeout
     playing_seen    = False
-    playing_grace   = _time.time() + 5.0
+    playing_grace   = time.time() + 5.0
 
-    _time.sleep(0.3)
+    time.sleep(0.3)
 
-    while _time.time() < deadline:
+    while time.time() < deadline:
         state_data = _get(f"/states/{entity_id}", timeout=3)
         if state_data:
             state = state_data.get("state", "")
@@ -460,13 +453,13 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0,
                 playing_seen = True
             elif playing_seen:
                 return True
-            elif not playing_seen and _time.time() > playing_grace:
+            elif not playing_seen and time.time() > playing_grace:
                 logger.debug(
                     "wait_until_idle: %s never entered playing state, continuing",
                     entity_id,
                 )
                 return True
-        _time.sleep(0.3)
+        time.sleep(0.3)
 
     logger.warning("wait_until_idle: %s timed out after %.0fs", entity_id, timeout)
     return False
@@ -542,14 +535,11 @@ def create_or_update_automation(seq: dict) -> bool:
             logger.info("Preserving %d user action(s) for automation %s",
                         len(user_actions), auto_id)
 
-    media_actions = _build_media_actions(seq)
-    all_actions = media_actions + user_actions
-
-    config = _automation_config(seq, preserve_actions=all_actions)
+    config = _automation_config(seq, preserve_actions=list(user_actions))
     result = _post(f"/config/automation/config/{auto_id}", config)
     if result is not None:
-        logger.info("Automation created/updated: automation.%s (media steps: %d)",
-                    auto_id, len(media_actions))
+        logger.info("Automation created/updated: automation.%s",
+                    auto_id)
         return True
     return False
 
@@ -588,14 +578,14 @@ def delete_automation(auto_id: str) -> bool:
 
 def trigger_automation(seq: dict) -> bool:
     """Test a sequence by firing the two_tone_decoded event directly."""
-    from datetime import datetime, timezone
+
     detected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return fire_two_tone_event(seq, confidence=1.0, detected_at=detected_at)
 
 
 def fire_health_event(status: str, message: str) -> bool:
     """Fire a two_tone_decoder_health event on the HA event bus."""
-    from datetime import datetime, timezone
+
     payload = {
         "status": status,
         "message": message,
@@ -611,7 +601,7 @@ def fire_health_event(status: str, message: str) -> bool:
 
 def push_decoder_sensor(status: str, error: str = "", extra: dict | None = None) -> bool:
     """Write decoder state directly to a persistent HA sensor entity."""
-    from datetime import datetime, timezone
+
     attrs = {
         "friendly_name": "Station Assistant Decoder",
         "icon": "mdi:radio-tower",
@@ -629,7 +619,7 @@ def push_decoder_sensor(status: str, error: str = "", extra: dict | None = None)
 
 def push_watchdog_sensor(app_version: str = "") -> bool:
     """Push a heartbeat to sensor.station_assistant_watchdog."""
-    from datetime import datetime, timezone
+
     now = datetime.now(timezone.utc)
     result = _post("/states/sensor.station_assistant_watchdog", {
         "state": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
