@@ -19,6 +19,7 @@ import logging
 import os
 import sys
 import time
+import queue
 import threading
 from pathlib import Path
 
@@ -1198,8 +1199,6 @@ class _LiveTranscoder:
         logger.info("Live transcoder stopped")
 
 
-import queue
-import threading
 
 _live_transcoder = _LiveTranscoder()
 
