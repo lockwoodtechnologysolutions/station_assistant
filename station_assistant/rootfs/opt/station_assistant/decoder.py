@@ -8,10 +8,12 @@ Architecture:
   DecoderService  — orchestrates everything, emits SocketIO events, fires HA events
 """
 
+import re
 import time
 import queue
 import logging
 import struct
+import subprocess
 import threading
 from datetime import datetime, timezone
 
@@ -236,17 +238,36 @@ class SequenceMachine:
 # ── Audio device enumeration ───────────────────────────────────────────────────
 
 def _get_alsa_card_names() -> dict:
-    """Read ALSA card names from /proc/asound/cards.
+    """Get ALSA capture device names using arecord -l.
 
+    Falls back to /proc/asound/cards if arecord is unavailable.
     Returns a dict mapping card number to friendly name, e.g.
-    {0: "HDA Intel PCH", 1: "USB Audio Device"}.
+    {1: "USB Audio Device"}.
     """
     names = {}
+
+    # Try arecord -l first (most reliable inside Docker containers)
+    try:
+        result = subprocess.run(
+            ["arecord", "-l"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                # Lines like: "card 1: Audio [USB Audio], device 0: USB Audio [USB Audio]"
+                m = re.match(r"card\s+(\d+):\s+\S+\s+\[(.+?)\]", line)
+                if m:
+                    names[int(m.group(1))] = m.group(2)
+            if names:
+                return names
+    except Exception:
+        pass
+
+    # Fallback: /proc/asound/cards
     try:
         with open("/proc/asound/cards", "r") as f:
             for line in f:
                 line = line.strip()
-                # Lines like: " 1 [Audio          ]: USB-Audio - USB Audio Device"
                 if line and line[0].isdigit():
                     parts = line.split(":")
                     card_num = int(line.split()[0])
@@ -287,7 +308,6 @@ def list_audio_devices() -> list:
                             break
                 elif "hw:" in name.lower() and alsa_names:
                     # Try to enrich "hw:1,0" style names
-                    import re
                     m = re.search(r"hw:(\d+)", name)
                     if m:
                         card_num = int(m.group(1))
