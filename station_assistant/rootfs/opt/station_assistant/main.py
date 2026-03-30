@@ -1064,12 +1064,40 @@ class _LiveTranscoder:
         self._sub_q = None
         self._feed_t = None
         self._read_t = None
-        self.mp3_q = None          # consumers read MP3 chunks from here
         self._lock = threading.Lock()
+        # Pub/sub: each consumer gets their own queue
+        self._subscribers: list[queue.Queue] = []
+        self._sub_lock = threading.Lock()
 
     @property
     def running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
+
+    def subscribe(self) -> queue.Queue:
+        """Add a consumer queue. Each gets a copy of every MP3 chunk."""
+        q: queue.Queue = queue.Queue(maxsize=200)
+        with self._sub_lock:
+            self._subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        with self._sub_lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+
+    def _publish(self, data: bytes) -> None:
+        """Send MP3 data to all subscriber queues."""
+        with self._sub_lock:
+            dead = []
+            for q in self._subscribers:
+                try:
+                    q.put_nowait(data)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._subscribers.remove(q)
 
     def start(self):
         """Spawn ffmpeg and begin transcoding. Idempotent."""
@@ -1088,7 +1116,6 @@ class _LiveTranscoder:
 
         sr = decoder.stream_bus.sample_rate
         self._sub_q = decoder.stream_bus.subscribe()
-        self.mp3_q = queue.Queue(maxsize=500)
         self._stop = threading.Event()
 
         self._proc = _sp.Popen(
@@ -1137,15 +1164,7 @@ class _LiveTranscoder:
                     data = self._proc.stdout.read(4096)
                     if not data:
                         break
-                    try:
-                        self.mp3_q.put(data, timeout=1.0)
-                    except queue.Full:
-                        # Drop oldest to keep queue fresh
-                        try:
-                            self.mp3_q.get_nowait()
-                        except queue.Empty:
-                            pass
-                        self.mp3_q.put_nowait(data)
+                    self._publish(data)
             except Exception:
                 pass
 
@@ -1172,7 +1191,9 @@ class _LiveTranscoder:
                 except Exception:
                     pass
             self._proc = None
-        self.mp3_q = None
+        # Clear all subscriber queues
+        with self._sub_lock:
+            self._subscribers.clear()
         logger.info("Live transcoder stopped")
 
 
@@ -1186,26 +1207,26 @@ _live_transcoder = _LiveTranscoder()
 def api_audio_live():
     """Stream live Line In audio as MP3.
 
-    The transcoder is pre-started by the stack manager when alert sounds
-    begin, so MP3 data is already buffered when the media player connects.
-    If not yet running, starts it on demand.
+    Each client gets its own subscriber queue from the transcoder so
+    multiple consumers (browser speaker icon + media players) each
+    receive a full copy of the MP3 stream without interference.
     """
     _live_transcoder.start()  # idempotent — no-op if already running
-    mp3_q = _live_transcoder.mp3_q
-    if mp3_q is None:
-        return "Transcoder not available", 503
+    client_q = _live_transcoder.subscribe()
 
     def generate():
         try:
             while True:
                 try:
-                    data = mp3_q.get(timeout=3.0)
+                    data = client_q.get(timeout=3.0)
                     yield data
                 except queue.Empty:
                     if not _live_transcoder.running:
                         return
         except GeneratorExit:
             pass
+        finally:
+            _live_transcoder.unsubscribe(client_q)
 
     return app.response_class(
         generate(),
