@@ -238,32 +238,36 @@ class SequenceMachine:
 # ── Audio device enumeration ───────────────────────────────────────────────────
 
 def _get_alsa_card_names() -> dict:
-    """Get ALSA capture device names using arecord -l.
+    """Get audio device names from ALSA or PulseAudio.
 
-    Falls back to /proc/asound/cards if arecord is unavailable.
-    Returns a dict mapping card number to friendly name, e.g.
-    {1: "USB Audio Device"}.
+    Tries multiple methods to find real hardware names:
+    1. arecord -l (ALSA capture devices)
+    2. /proc/asound/cards
+    3. pactl list sources (PulseAudio)
+
+    Returns a dict mapping card number to friendly name.
     """
     names = {}
 
-    # Try arecord -l first (most reliable inside Docker containers)
+    # Method 1: arecord -l
     try:
         result = subprocess.run(
             ["arecord", "-l"],
             capture_output=True, text=True, timeout=5,
         )
+        logger.debug("arecord -l exit=%d stdout=%s", result.returncode, result.stdout[:200])
         if result.returncode == 0:
             for line in result.stdout.splitlines():
-                # Lines like: "card 1: Audio [USB Audio], device 0: USB Audio [USB Audio]"
                 m = re.match(r"card\s+(\d+):\s+\S+\s+\[(.+?)\]", line)
                 if m:
                     names[int(m.group(1))] = m.group(2)
             if names:
+                logger.info("ALSA card names (arecord): %s", names)
                 return names
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("arecord -l failed: %s", e)
 
-    # Fallback: /proc/asound/cards
+    # Method 2: /proc/asound/cards
     try:
         with open("/proc/asound/cards", "r") as f:
             for line in f:
@@ -273,8 +277,46 @@ def _get_alsa_card_names() -> dict:
                     card_num = int(line.split()[0])
                     if len(parts) >= 2:
                         names[card_num] = parts[-1].strip()
-    except Exception:
-        pass
+        if names:
+            logger.info("ALSA card names (/proc): %s", names)
+            return names
+    except Exception as e:
+        logger.debug("/proc/asound/cards failed: %s", e)
+
+    # Method 3: pactl list sources short — parse PulseAudio source names
+    # Lines like: "1	alsa_input.usb-C-Media...	s16le 1ch 44100Hz	RUNNING"
+    try:
+        result = subprocess.run(
+            ["pactl", "list", "sources", "short"],
+            capture_output=True, text=True, timeout=5,
+        )
+        logger.debug("pactl sources exit=%d stdout=%s", result.returncode, result.stdout[:300])
+        if result.returncode == 0:
+            idx = 0
+            for line in result.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2:
+                    source_name = parts[1]
+                    # Extract a readable name from the PulseAudio source name
+                    # e.g. "alsa_input.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.mono-fallback"
+                    if "alsa_input" in source_name:
+                        # Strip prefix and clean up
+                        friendly = source_name.replace("alsa_input.", "")
+                        friendly = friendly.replace("_", " ").replace("-", " ")
+                        # Remove trailing "mono fallback" etc.
+                        for suffix in ("mono fallback", "analog stereo", "analog mono"):
+                            friendly = friendly.replace(suffix, "").strip()
+                        friendly = re.sub(r"\s+", " ", friendly).strip(". ")
+                        if friendly:
+                            names[idx] = friendly
+                            idx += 1
+            if names:
+                logger.info("PulseAudio source names: %s", names)
+                return names
+    except Exception as e:
+        logger.debug("pactl failed: %s", e)
+
+    logger.warning("Could not determine hardware audio device names")
     return names
 
 
