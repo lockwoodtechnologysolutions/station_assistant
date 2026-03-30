@@ -1295,7 +1295,7 @@ async function restartDecoder() {
 async function loadLog() {
   const d    = await api('GET', '/api/detections?limit=200');
   const dets = d.detections || [];
-  $('log-count-badge').textContent = dets.length;
+  $('log-count-badge').textContent = d.total ?? dets.length;
   const empty   = $('log-empty');
   const wrapper = $('log-table-wrap');
   if (dets.length === 0) {

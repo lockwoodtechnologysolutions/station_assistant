@@ -1054,7 +1054,11 @@ def api_audio_live():
 @app.route("/api/detections")
 def api_detections():
     limit = int(request.args.get("limit", 100))
-    return jsonify({"status": "ok", "detections": dl.get_recent_detections(limit)})
+    return jsonify({
+        "status": "ok",
+        "detections": dl.get_recent_detections(limit),
+        "total": dl.get_detection_count(),
+    })
 
 
 @app.route("/api/detections/clear", methods=["POST"])

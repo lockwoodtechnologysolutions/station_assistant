@@ -82,6 +82,18 @@ def get_recent_detections(limit: int = 200) -> list:
             return []
 
 
+def get_detection_count() -> int:
+    """Return the total number of detection records."""
+    with _lock:
+        try:
+            conn = _get_conn()
+            row = conn.execute("SELECT COUNT(*) FROM detections").fetchone()
+            return row[0] if row else 0
+        except sqlite3.Error as e:
+            logger.error("DB count error: %s", e)
+            return 0
+
+
 def clear_log() -> int:
     """Delete all detection records. Returns number of rows deleted."""
     with _lock:
