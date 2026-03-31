@@ -320,46 +320,22 @@ def _get_alsa_card_names() -> dict:
     return names
 
 
-def list_audio_devices() -> list:
-    """
-    Return a list of available input audio devices.
-    Each item: {"index": int, "name": str, "channels": int, "sample_rate": int}
+def _list_devices_basic() -> list:
+    """Return basic PyAudio device list without subprocess calls.
 
-    Attempts to enrich PulseAudio device names with real hardware names.
-    If name enrichment fails, returns the original PyAudio names.
+    Safe to call from eventlet green threads (decoder startup).
     """
     if not PYAUDIO_AVAILABLE:
         return []
     try:
         pa = pyaudio.PyAudio()
-
-        # Try to get hardware names, but don't let it block audio startup
-        alsa_names = {}
-        try:
-            alsa_names = _get_alsa_card_names()
-        except Exception as e:
-            logger.debug("Device name enrichment skipped: %s", e)
-
         devices = []
         for i in range(pa.get_device_count()):
             info = pa.get_device_info_by_index(i)
             if info.get("maxInputChannels", 0) > 0:
-                name = info["name"]
-                if name.lower() in ("pulse", "default") and alsa_names:
-                    for card_num, card_name in sorted(alsa_names.items()):
-                        if card_name:
-                            name = f"{card_name} (hw:{card_num},0)"
-                            break
-                elif "hw:" in name.lower() and alsa_names:
-                    m = re.search(r"hw:(\d+)", name)
-                    if m:
-                        card_num = int(m.group(1))
-                        if card_num in alsa_names:
-                            name = f"{alsa_names[card_num]} - {name}"
-
                 devices.append({
                     "index": i,
-                    "name": name,
+                    "name": info["name"],
                     "channels": info["maxInputChannels"],
                     "sample_rate": int(info["defaultSampleRate"]),
                 })
@@ -368,6 +344,43 @@ def list_audio_devices() -> list:
     except Exception as e:
         logger.error("Failed to enumerate audio devices: %s", e)
         return []
+
+
+def list_audio_devices() -> list:
+    """Return audio device list with enriched hardware names.
+
+    Calls subprocess (arecord, pactl) to resolve real device names.
+    Only safe to call from Flask request threads, NOT from the
+    eventlet-patched decoder thread.
+    """
+    devices = _list_devices_basic()
+    if not devices:
+        return devices
+
+    try:
+        alsa_names = _get_alsa_card_names()
+    except Exception as e:
+        logger.debug("Device name enrichment skipped: %s", e)
+        return devices
+
+    if not alsa_names:
+        return devices
+
+    for dev in devices:
+        name = dev["name"]
+        if name.lower() in ("pulse", "default"):
+            for card_num, card_name in sorted(alsa_names.items()):
+                if card_name:
+                    dev["name"] = f"{card_name} (hw:{card_num},0)"
+                    break
+        elif "hw:" in name.lower():
+            m = re.search(r"hw:(\d+)", name)
+            if m:
+                card_num = int(m.group(1))
+                if card_num in alsa_names:
+                    dev["name"] = f"{alsa_names[card_num]} - {name}"
+
+    return devices
 
 
 # ── Main decoder service ───────────────────────────────────────────────────────
@@ -482,7 +495,7 @@ class DecoderService:
 
         # Cache device list BEFORE opening the stream — a second PyAudio
         # instance will deadlock on Linux/ALSA once the stream is active.
-        self._cached_devices = list_audio_devices()
+        self._cached_devices = _list_devices_basic()
         logger.info("Audio devices found: %d input(s)", len(self._cached_devices))
 
         # Auto-detect native sample rate from the target device if available.
