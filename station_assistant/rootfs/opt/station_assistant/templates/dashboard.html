@@ -177,7 +177,7 @@ body::after {
   transition: opacity 0.5s ease;
   padding: 16px 32px;
 }
-#idle.hidden { opacity: 0; pointer-events: none; }
+#idle.hidden { opacity: 0; pointer-events: none; visibility: hidden; }
 
 /* Station header */
 .idle-station {
@@ -978,20 +978,26 @@ function showIdle() {
 }
 
 function enterAlertState() {
-  document.getElementById('idle').classList.add('hidden');
-  document.getElementById('alert').classList.add('show');
+  const idle  = document.getElementById('idle');
+  const alert = document.getElementById('alert');
+  idle.classList.add('hidden');
+  idle.style.display = 'none';           // hard hide — no overlap possible
+  alert.classList.add('show');
+  alert.style.display = 'flex';
   document.getElementById('alert-border').classList.add('flash');
   document.getElementById('return-bar-wrap').style.display = 'block';
   document.getElementById('return-bar').style.width = '100%';
 }
 
 function exitAlertState() {
-  document.getElementById('alert').classList.remove('show');
+  const idle  = document.getElementById('idle');
+  const alert = document.getElementById('alert');
+  alert.classList.remove('show');
+  alert.style.display = 'none';          // hard hide immediately
   document.getElementById('alert-border').classList.remove('flash');
   document.getElementById('return-bar-wrap').style.display = 'none';
-  setTimeout(() => {
-    document.getElementById('idle').classList.remove('hidden');
-  }, 400);
+  idle.style.display = 'flex';
+  idle.classList.remove('hidden');
 }
 
 function updateEyebrow() {
