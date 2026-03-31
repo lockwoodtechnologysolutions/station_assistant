@@ -389,7 +389,7 @@
         <label>Multi-Unit Ramp Sound</label>
         <div style="display:flex;gap:8px;align-items:center">
           <select id="s-multi-sound" style="flex:1">
-            <option value="">&mdash; none (play each unit&rsquo;s Sound 1 individually) &mdash;</option>
+            <option value="">None</option>
           </select>
           <button class="btn btn-icon btn-sm" onclick="playPreview($('s-multi-sound').value)" title="Preview sound">&#9654;</button>
           <label class="btn btn-secondary btn-sm"
@@ -399,7 +399,7 @@
                    onchange="uploadMultiUnitSound(this)">
           </label>
         </div>
-        <div class="form-hint">Played instead of individual ramp-up tones when 2+ units are decoded in the same page.</div>
+        <div class="form-hint">When set to None, each unit's individual Ramp Up tone (Sound 1) is played. Select a sound here to play a single shared ramp-up tone for all units in a multi-unit dispatch.</div>
       </div>
       <div class="form-row">
         <label>Multi-Unit Stack Color</label>
@@ -988,7 +988,7 @@ async function uploadMultiUnitSound(input) {
       const sndData = await api('GET', '/api/setup/sounds');
       const musel   = $('s-multi-sound');
       function _niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
-      musel.innerHTML = '<option value="">&mdash; none (play each unit\u2019s Sound 1 individually) &mdash;</option>';
+      musel.innerHTML = '<option value="">None</option>';
       (sndData.sounds || []).forEach(fn => {
         const o = document.createElement('option');
         o.value = fn; o.textContent = _niceName(fn); musel.appendChild(o);
@@ -1310,7 +1310,7 @@ async function loadSettings() {
     // Multi-unit ramp-up sound selector
     const sndData = await api('GET', '/api/setup/sounds');
     const musel   = $('s-multi-sound');
-    musel.innerHTML = '<option value="">&mdash; none (play each unit\u2019s Sound 1 individually) &mdash;</option>';
+    musel.innerHTML = '<option value="">None</option>';
     function _niceName(fn) { return fn.replace(/\.mp3$/i,'').replace(/[_-]/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
     (sndData.sounds || []).forEach(fn => {
       const o = document.createElement('option');

@@ -779,8 +779,6 @@ const SA_CONFIG = {
   tone_2_label:  '{{ config.tone_2_label | default("MEDIC 1") }}',
   stack_window:  {{ config.stack_window | default(60) }},
   return_timeout:{{ config.return_timeout | default(45) }},
-  tone_1_sound:  '{{ config.tone_1_sound | default("engine.mp3") }}',
-  tone_2_sound:  '{{ config.tone_2_sound | default("medic.mp3") }}',
   show_weather:  {{ config.show_weather | default(True) | tojson }},
 };
 
@@ -816,8 +814,6 @@ let windowElapsed    = 0;
 let windowOpen       = false;
 let alertStack       = [];
 let currentAlertPayload = null;
-let audioCtx         = null;
-let pendingAudio     = null;    // queued sound before user gesture
 
 // Weather refresh interval (5 min)
 let wxInterval = null;
@@ -945,7 +941,6 @@ function showAlert(payload) {
     alertStack      = stack || [{ label: unit_label, tone_id, time: timestamp, seq: 1, alert_color: color }];
     startElapsedTimer();
     enterAlertState();
-    playSound(tone_id);
   } else {
     // Additional unit stacked
     alertStack = stack || alertStack;
@@ -1157,46 +1152,6 @@ function setAlertColor(hex) {
   document.documentElement.style.setProperty('--alert-b', b);
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// AUDIO
-// ════════════════════════════════════════════════════════════════════════
-
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  // Play any queued sound
-  if (pendingAudio) { playSound(pendingAudio); pendingAudio = null; }
-}
-
-function playSound(toneId) {
-  const soundFile = toneId === 'tone_1'
-    ? SA_CONFIG.tone_1_sound
-    : SA_CONFIG.tone_2_sound;
-  const url = `/local/station_assistant/sounds/${soundFile}`;
-
-  if (!audioCtx || audioCtx.state === 'suspended') {
-    // Queue it — will play after first user interaction
-    pendingAudio = toneId;
-    return;
-  }
-
-  fetch(url)
-    .then(r => r.arrayBuffer())
-    .then(buf => audioCtx.decodeAudioData(buf))
-    .then(decoded => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = decoded;
-      src.connect(audioCtx.destination);
-      src.start(0);
-    })
-    .catch(e => console.warn('Audio play failed:', e));
-}
-
-// Init audio context on first touch/click (browser autoplay policy)
-document.addEventListener('click',     initAudio, {once: true});
-document.addEventListener('touchstart', initAudio, {once: true});
 
 // ════════════════════════════════════════════════════════════════════════
 // SOCKETIO
@@ -1237,8 +1192,6 @@ socket.on('config', (cfg) => {
     // Sync runtime config values
     SA_CONFIG.stack_window    = cfg.stack_window    || SA_CONFIG.stack_window;
     SA_CONFIG.return_timeout  = cfg.return_timeout  || SA_CONFIG.return_timeout;
-    SA_CONFIG.tone_1_sound    = cfg.tone_1_sound    || SA_CONFIG.tone_1_sound;
-    SA_CONFIG.tone_2_sound    = cfg.tone_2_sound    || SA_CONFIG.tone_2_sound;
   }
 });
 
