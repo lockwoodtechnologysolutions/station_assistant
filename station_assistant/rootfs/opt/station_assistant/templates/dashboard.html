@@ -1165,17 +1165,19 @@ let _dashAudioEl = null;
 function playDashboardAudio() {
   if (!SA_CONFIG.dashboard_audio) return;
 
-  // The stack manager concatenates all sounds into _combined_alert.mp3
-  // and places it in /media/station_assistant/. We can play it via the
-  // media source URL served by the addon.
-  const url = '{{ script_root }}/api/sounds/_combined_alert.mp3';
+  // The combined file is built by ffmpeg in the audio thread, which may
+  // take 1-2 seconds after the gap-expired event. Delay fetch slightly
+  // to ensure the file exists.
+  setTimeout(() => {
+    const url = '{{ script_root }}/api/sounds/_combined_alert.mp3?t=' + Date.now();
 
-  if (!_dashAudioEl) {
-    _dashAudioEl = document.createElement('audio');
-    document.body.appendChild(_dashAudioEl);
-  }
-  _dashAudioEl.src = url;
-  _dashAudioEl.play().catch(() => {});
+    if (!_dashAudioEl) {
+      _dashAudioEl = document.createElement('audio');
+      document.body.appendChild(_dashAudioEl);
+    }
+    _dashAudioEl.src = url;
+    _dashAudioEl.play().catch(e => console.warn('Dashboard audio failed:', e));
+  }, 3000);
 }
 
 function stopDashboardAudio() {

@@ -560,9 +560,9 @@
       </div>
       <div class="form-grid-2">
         <div class="form-row">
-          <label>Detection Threshold <span class="label-hint">(0.01–1.0)</span></label>
-          <input id="f-threshold" type="number" step="0.01" min="0.01" max="1.0" value="0.15">
-          <div class="form-hint">Minimum Goertzel magnitude to recognize an active tone. Start at 0.05–0.15; lower only if the audio signal is genuinely weak. A 0.25 s dropout grace period prevents brief signal dips from cancelling an in-progress detection.</div>
+          <label>Detection Threshold <span class="label-hint">(0.001–1.0)</span></label>
+          <input id="f-threshold" type="number" step="0.005" min="0.001" max="1.0" value="0.05">
+          <div class="form-hint">Minimum Goertzel magnitude to recognize an active tone. Check the Audio Monitor tab to see actual magnitudes while a tone plays. Set this just below the observed magnitude. Typical values: 0.01–0.05 for weak signals, 0.05–0.15 for normal signals.</div>
         </div>
         <div class="form-row">
           <label>Tone Confirmation Threshold <span class="label-hint">(10%–100%)</span></label>
