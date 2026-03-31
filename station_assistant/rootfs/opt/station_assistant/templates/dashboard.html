@@ -955,7 +955,6 @@ function showAlert(payload) {
   if (stack_open === false) {
     // Single-unit or gap expired — window already closed by backend.
     // Skip the stack window countdown and start return timer directly.
-    playDashboardAudio();  // play concatenated alert sounds (if enabled)
     stopWindowIndicator();
     document.getElementById('stack-fill').className = 'stack-window-fill closed';
     document.getElementById('stack-val').textContent = 'closed';
@@ -1233,12 +1232,19 @@ socket.on('config', (cfg) => {
 // Receive decoded alert event
 socket.on('alert', (payload) => {
   if (payload.event === 'idle') {
-    // If the frontend return timer is running, let it handle the
-    // transition cleanly so the bar reaches 0% before going idle.
-    // Only force idle if there's no active timer (safety fallback).
     if (!returnTimer) {
       showIdle();
     }
+    return;
+  }
+  if (payload.event === 'gap_expired') {
+    // Gap timer fired — start return timer and play dashboard audio.
+    // Don't re-render alert cards (avoids visual blip).
+    playDashboardAudio();
+    stopWindowIndicator();
+    document.getElementById('stack-fill').className = 'stack-window-fill closed';
+    document.getElementById('stack-val').textContent = 'closed';
+    startReturnTimer();
     return;
   }
   // Track last alert in bottom bar

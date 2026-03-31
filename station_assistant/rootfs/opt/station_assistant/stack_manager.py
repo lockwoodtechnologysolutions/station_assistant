@@ -240,11 +240,17 @@ class StackManager:
             "is_multi_unit":  is_multi,
         }
 
-        # Notify dashboard via SocketIO so it can start the return timer
-        # and play dashboard audio (if enabled).
+        # Notify dashboard via SocketIO that the gap expired —
+        # tells it to start the return timer and play dashboard audio.
+        # Uses a separate 'gap_expired' event to avoid re-rendering the
+        # alert cards (which causes a visual blip).
         if self._alert_cb:
             try:
-                self._alert_cb(payload)
+                self._alert_cb({
+                    "event":          "gap_expired",
+                    "stack_open":     False,
+                    "return_timeout": return_timeout,
+                })
             except Exception as e:
                 logger.error("Alert callback (gap expired): %s", e)
 
