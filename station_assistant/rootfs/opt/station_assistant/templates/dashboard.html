@@ -77,7 +77,6 @@ body.light-mode .unit-card { background: #f2f4f6; border-color: #cccccc; }
 body.light-mode .unit-card.primary { background: #fff0f0; border-color: #ddaaaa; }
 body.light-mode .unit-card.additional { background: #f0fff4; border-color: #aaddbb; }
 body.light-mode .unit-name { color: #000000; }
-body.light-mode .unit-icon { filter: none; }
 body.light-mode .stack-window-lbl { color: #889aaa; }
 body.light-mode .stack-window-val { color: #889aaa; }
 body.light-mode .stack-window-track { background: #dde4ec; }
@@ -401,8 +400,7 @@ body::after {
   background: #060c08;
 }
 
-.unit-left { display: flex; align-items: center; gap: 18px; }
-.unit-icon { font-size: clamp(36px, 4.5vw, 56px); line-height: 1; }
+.unit-left { display: flex; align-items: center; justify-content: center; }
 .unit-name {
   font-family: var(--display);
   font-size: clamp(52px, 8vw, 96px);
@@ -1005,24 +1003,6 @@ function updateEyebrow() {
 // ════════════════════════════════════════════════════════════════════════
 // UNIT STACK RENDERER
 // ════════════════════════════════════════════════════════════════════════
-const UNIT_ICONS = {
-  engine:    '&#128657;',
-  eng:       '&#128657;',
-  medic:     '&#128657;',
-  med:       '&#128657;',
-  battalion: '&#9733;',
-  bat:       '&#9733;',
-  rescue:    '&#128657;',
-  default:   '&#128657;',
-};
-
-function unitIcon(label) {
-  const l = (label || '').toLowerCase();
-  for (const [key, icon] of Object.entries(UNIT_ICONS)) {
-    if (l.includes(key)) return icon;
-  }
-  return UNIT_ICONS.default;
-}
 
 function renderStack() {
   const container = document.getElementById('unit-stack');
@@ -1037,7 +1017,6 @@ function renderStack() {
     card.style.borderColor  = hexToRgba(color, 0.55);
     card.innerHTML = `
       <div class="unit-left">
-        <div class="unit-icon">${u.icon || unitIcon(u.label)}</div>
         <div class="unit-name">${u.label || u.unit_label || ''}</div>
       </div>
     `;

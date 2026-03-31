@@ -573,32 +573,8 @@
           <span>Enabled &mdash; actively monitor this sequence</span>
         </label>
       </div>
+      </div>
       <div class="form-grid-2">
-        <div class="form-row">
-          <label>Alert Dashboard Icon</label>
-          <select id="f-icon" style="font-size:18px">
-            <option value="">&#x1F691; Auto-detect from name</option>
-            <option value="&#x1F692;">&#x1F692; Fire Engine</option>
-            <option value="&#x1F691;">&#x1F691; Ambulance / Medic</option>
-            <option value="&#x1F697;">&#x1F697; Car / Staff Vehicle</option>
-            <option value="&#x1F6FB;">&#x1F6FB; Pickup / Utility Truck</option>
-            <option value="&#x1F690;">&#x1F690; Bus / Transport</option>
-            <option value="&#x2B50;">&#x2B50; Battalion / Command</option>
-            <option value="&#x1F681;">&#x1F681; Helicopter / Air Ops</option>
-            <option value="&#x26F5;">&#x26F5; Marine / Boat</option>
-            <option value="&#x1F525;">&#x1F525; Fire / Wildland</option>
-            <option value="&#x26D1;&#xFE0F;">&#x26D1;&#xFE0F; Rescue / HAZMAT</option>
-            <option value="&#x1F3E5;">&#x1F3E5; Hospital</option>
-            <option value="&#x1F6F1;">&#x1F6F1; Oncoming Fire Engine</option>
-            <option value="&#x1F4DF;">&#x1F4DF; Pager</option>
-            <option value="&#x1F6E5;&#xFE0F;">&#x1F6E5;&#xFE0F; Motorboat</option>
-            <option value="&#x1F514;">&#x1F514; Bell</option>
-            <option value="&#x1F4E2;">&#x1F4E2; Loudspeaker</option>
-            <option value="&#x1F6A8;">&#x1F6A8; Police Light</option>
-            <option value="&#x26A0;&#xFE0F;">&#x26A0;&#xFE0F; Warning</option>
-          </select>
-          <div class="form-hint">Icon shown on the Alert Dashboard next to the unit name.</div>
-        </div>
         <div class="form-row">
           <label>Alert Dashboard Color</label>
           <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
@@ -856,7 +832,6 @@ async function openAddModal() {
   $('f-reset').value     = '30';
   $('f-enabled').checked = true;
   $('f-alert-color').value = '#8b1a1a';
-  $('f-icon').value = '';
   selectedPlayers = [];
   await loadModalDropdowns(null);
   $('seq-modal').style.display = 'flex';
@@ -882,7 +857,6 @@ async function openEditModal(id) {
   $('f-reset').value     = seq.auto_reset_seconds || 30;
   $('f-enabled').checked = seq.enabled !== false;
   $('f-alert-color').value = seq.alert_color || '#8b1a1a';
-  $('f-icon').value = seq.icon || '';
   selectedPlayers = Array.isArray(seq.media_players) ? [...seq.media_players]
     : seq.media_player_entity ? [seq.media_player_entity] : [];
   await loadModalDropdowns(seq);
@@ -956,7 +930,6 @@ async function saveSequence() {
     sound_3:            $('f-sound3').value,
     media_players:      [...selectedPlayers],
     alert_color:        $('f-alert-color').value,
-    icon:               $('f-icon').value,
   };
   if (!payload.name) { showModalError('Sequence name is required.'); return; }
   if (!payload.tone1_hz || !payload.tone2_hz) { showModalError('Both frequencies are required.'); return; }
