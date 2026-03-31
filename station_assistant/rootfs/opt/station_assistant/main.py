@@ -1081,9 +1081,10 @@ def on_connect():
     cfg  = sa_config.load()
     seqs = cm.get_sequences()
     emit("config", {
-        "station_name":   cfg.get("station_name", "Station 1"),
-        "stack_window":   cfg.get("stack_window", 60),
-        "return_timeout": cfg.get("return_timeout", 45),
+        "station_name":    cfg.get("station_name", "Station 1"),
+        "stack_window":    cfg.get("stack_window", 60),
+        "return_timeout":  cfg.get("return_timeout", 45),
+        "dashboard_audio": cfg.get("dashboard_audio", False),
         "sequences": [
             {
                 "id":    s["id"],

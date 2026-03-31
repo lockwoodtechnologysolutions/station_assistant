@@ -780,6 +780,7 @@ const SA_CONFIG = {
   stack_window:  {{ config.stack_window | default(60) }},
   return_timeout:{{ config.return_timeout | default(45) }},
   show_weather:  {{ config.show_weather | default(True) | tojson }},
+  dashboard_audio: {{ config.dashboard_audio | default(False) | tojson }},
 };
 
 // Apply show_weather setting immediately (element absent server-side when false; guard for safety)
@@ -954,6 +955,7 @@ function showAlert(payload) {
   if (stack_open === false) {
     // Single-unit or gap expired — window already closed by backend.
     // Skip the stack window countdown and start return timer directly.
+    playDashboardAudio();  // play concatenated alert sounds (if enabled)
     stopWindowIndicator();
     document.getElementById('stack-fill').className = 'stack-window-fill closed';
     document.getElementById('stack-val').textContent = 'closed';
@@ -969,6 +971,7 @@ function showIdle() {
   stopElapsedTimer();
   stopReturnTimer();
   stopWindowIndicator();
+  stopDashboardAudio();
   exitAlertState();
 }
 
@@ -1154,6 +1157,35 @@ function setAlertColor(hex) {
 
 
 // ════════════════════════════════════════════════════════════════════════
+// DASHBOARD AUDIO (plays alert sounds through the browser when enabled)
+// ════════════════════════════════════════════════════════════════════════
+
+let _dashAudioEl = null;
+
+function playDashboardAudio() {
+  if (!SA_CONFIG.dashboard_audio) return;
+
+  // The stack manager concatenates all sounds into _combined_alert.mp3
+  // and places it in /media/station_assistant/. We can play it via the
+  // media source URL served by the addon.
+  const url = '{{ script_root }}/api/sounds/_combined_alert.mp3';
+
+  if (!_dashAudioEl) {
+    _dashAudioEl = document.createElement('audio');
+    document.body.appendChild(_dashAudioEl);
+  }
+  _dashAudioEl.src = url;
+  _dashAudioEl.play().catch(() => {});
+}
+
+function stopDashboardAudio() {
+  if (_dashAudioEl) {
+    _dashAudioEl.pause();
+    _dashAudioEl.src = '';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // SOCKETIO
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1192,6 +1224,7 @@ socket.on('config', (cfg) => {
     // Sync runtime config values
     SA_CONFIG.stack_window    = cfg.stack_window    || SA_CONFIG.stack_window;
     SA_CONFIG.return_timeout  = cfg.return_timeout  || SA_CONFIG.return_timeout;
+    if ('dashboard_audio' in cfg) SA_CONFIG.dashboard_audio = cfg.dashboard_audio;
   }
 });
 
