@@ -137,6 +137,9 @@
     .gz-track { flex: 1; height: 10px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
     .gz-fill { height: 100%; border-radius: 2px; background: var(--accent2); transition: width .12s; }
     .gz-val { font-size: 11px; font-family: var(--mono); color: var(--text2); width: 36px; text-align: right; }
+    .gz-cooldown { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; padding: 4px 8px; background: rgba(232,167,71,0.12); border-radius: 4px; font-size: 11px; }
+    .gz-cd-label { color: var(--warn); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .gz-cd-timer { font-family: var(--mono); color: var(--warn); font-weight: 600; }
     .seq-led {
       display: inline-block; width: 12px; height: 12px; border-radius: 50%;
       background: #2a2e38; border: 1px solid #3a3f4d;
@@ -1146,6 +1149,9 @@ async function startMonitor() {
         card.style.borderColor = '';
         card.style.boxShadow   = '';
       }, 4000);
+      // Start cooldown countdown on this card
+      const seq = sequences.find(s => s.id === d.seq_id);
+      if (seq) startCooldownTimer(d.seq_id, seq.auto_reset_seconds);
     } catch(err) {}
   });
   sseSource.onerror = () => {
@@ -1255,8 +1261,44 @@ function renderGoertzelCards() {
         <div class="gz-track"><div class="gz-fill" id="gz-b-${s.id}" style="width:0%"></div></div>
         <div class="gz-val" id="gz-bv-${s.id}">—</div>
       </div>
+      <div class="gz-cooldown" id="gz-cd-${s.id}" style="display:none">
+        <span class="gz-cd-label">Cooldown</span>
+        <span class="gz-cd-timer" id="gz-cdt-${s.id}"></span>
+      </div>
     </div>
   `).join('');
+}
+
+// ── Cooldown countdown timers on Goertzel cards ──────────────────────────────
+
+const _cooldownTimers = {};  // seq_id → intervalId
+
+function startCooldownTimer(seqId, seconds) {
+  // Clear any existing timer for this sequence
+  if (_cooldownTimers[seqId]) {
+    clearInterval(_cooldownTimers[seqId]);
+    delete _cooldownTimers[seqId];
+  }
+
+  const cdEl = document.getElementById('gz-cd-' + seqId);
+  const timerEl = document.getElementById('gz-cdt-' + seqId);
+  if (!cdEl || !timerEl) return;
+
+  let remaining = seconds;
+  cdEl.style.display = 'flex';
+  timerEl.textContent = remaining + 's';
+
+  _cooldownTimers[seqId] = setInterval(() => {
+    remaining--;
+    if (remaining > 0) {
+      timerEl.textContent = remaining + 's';
+    } else {
+      timerEl.textContent = '0s';
+      cdEl.style.display = 'none';
+      clearInterval(_cooldownTimers[seqId]);
+      delete _cooldownTimers[seqId];
+    }
+  }, 1000);
 }
 
 async function restartDecoder() {
