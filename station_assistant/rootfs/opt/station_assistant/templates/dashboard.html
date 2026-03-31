@@ -1203,9 +1203,15 @@ const socket = io({
   transports: ['websocket', 'polling'],
 });
 
+let _hasConnectedBefore = false;
 socket.on('connect', () => {
   setConnBadge('connected', 'live');
-  // Request fresh weather on connect
+  if (_hasConnectedBefore) {
+    // Reconnect after disconnect — reset to idle to clear stale state,
+    // then let the server push the current state via SocketIO.
+    showIdle();
+  }
+  _hasConnectedBefore = true;
   socket.emit('request_weather');
 });
 
@@ -1325,6 +1331,44 @@ loadLastAlert();
 // ════════════════════════════════════════════════════════════════════════
 document.getElementById('idle-station').textContent =
   (SA_CONFIG.station_name || 'Station 1').toUpperCase();
+
+// ════════════════════════════════════════════════════════════════════════
+// AUTO-REFRESH WATCHDOG
+// Handles stale state after WebSocket disconnects or addon updates.
+// ════════════════════════════════════════════════════════════════════════
+
+(function() {
+  const BOOT_VERSION = '{{ app_version }}';
+  let disconnectedSince = null;
+
+  // Track WebSocket disconnect duration
+  socket.on('connect', () => { disconnectedSince = null; });
+  socket.on('disconnect', () => {
+    if (!disconnectedSince) disconnectedSince = Date.now();
+  });
+
+  setInterval(() => {
+    // Reload if WebSocket has been dead for >90 seconds
+    if (disconnectedSince && (Date.now() - disconnectedSince) > 90000) {
+      console.log('Dashboard: WebSocket dead >90s, reloading...');
+      location.reload();
+      return;
+    }
+
+    // Periodically check if the app version changed (addon was updated)
+    fetch('/api/health', { signal: AbortSignal.timeout(5000) })
+      .then(r => r.json())
+      .then(d => {
+        // If we can't get a version, skip — don't reload on network blips
+        if (!d || !d.version) return;
+        if (d.version !== BOOT_VERSION) {
+          console.log('Dashboard: version changed, reloading...');
+          location.reload();
+        }
+      })
+      .catch(() => {}); // silent on error
+  }, 60000); // check every 60 seconds
+})();
 </script>
 </body>
 </html>

@@ -740,8 +740,9 @@ def api_sequences_delete(seq_id):
 @app.route("/api/health")
 def api_health():
     return jsonify({
-        "status":         "ok",
-        "setup_complete": SAConfig.is_setup_complete(),
+        "status":          "ok",
+        "version":         APP_VERSION,
+        "setup_complete":  SAConfig.is_setup_complete(),
         "decoder_running": decoder.is_running,
     })
 
