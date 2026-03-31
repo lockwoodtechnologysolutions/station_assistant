@@ -240,6 +240,14 @@ class StackManager:
             "is_multi_unit":  is_multi,
         }
 
+        # Notify dashboard via SocketIO so it can start the return timer
+        # and play dashboard audio (if enabled).
+        if self._alert_cb:
+            try:
+                self._alert_cb(payload)
+            except Exception as e:
+                logger.error("Alert callback (gap expired): %s", e)
+
         try:
             ha._post("/events/station_assistant_alert", payload)
             logger.info(
@@ -354,8 +362,9 @@ class StackManager:
 
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
-        finally:
-            ha.cleanup_combined_sound()
+        # Don't clean up _combined_alert.mp3 here — the Alert Dashboard
+        # browser may still be fetching it. It gets overwritten on the
+        # next alert anyway.
 
         # ── Line In relay ─────────────────────────────────────────────────
         if all_entities:
