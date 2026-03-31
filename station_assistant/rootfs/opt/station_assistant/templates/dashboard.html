@@ -1239,7 +1239,12 @@ socket.on('config', (cfg) => {
 // Receive decoded alert event
 socket.on('alert', (payload) => {
   if (payload.event === 'idle') {
-    showIdle();
+    // If the frontend return timer is running, let it handle the
+    // transition cleanly so the bar reaches 0% before going idle.
+    // Only force idle if there's no active timer (safety fallback).
+    if (!returnTimer) {
+      showIdle();
+    }
     return;
   }
   // Track last alert in bottom bar
