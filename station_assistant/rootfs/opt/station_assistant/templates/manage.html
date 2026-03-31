@@ -108,6 +108,7 @@
     .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent2); }
     .form-hint { font-size: 11px; color: var(--text2); }
     .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
     .label-hint { font-weight: 400; color: var(--text2); }
     .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
     .checkbox-label input { width: auto; }
@@ -168,6 +169,7 @@
     @media (max-width: 768px) {
       .monitor-row-1, .monitor-row-2 { grid-template-columns: 1fr; }
       .form-grid-2 { grid-template-columns: 1fr; }
+      .form-grid-3 { grid-template-columns: 1fr; }
       .settings-grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -365,7 +367,7 @@
 
     <div class="settings-card settings-card-tall">
       <h3>Stack Page Configuration</h3>
-      <div class="form-grid-2">
+      <div class="form-grid-3">
         <div class="form-row">
           <label>Page Sequence Gap</label>
           <div style="display:flex;align-items:center;gap:8px">
@@ -383,6 +385,15 @@
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
           <div class="form-hint">After the first tone, hold the incident open this long for additional units (default: 60s).</div>
+        </div>
+        <div class="form-row">
+          <label>Duplicate Cooldown</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5"
+                   style="width:80px;flex-shrink:0">
+            <span style="font-size:12px;color:var(--text2)">seconds</span>
+          </div>
+          <div class="form-hint">Repeat detections of the same sequence within this window are silently ignored. 0 to disable.</div>
         </div>
       </div>
       <div class="form-row" style="margin-top:4px">
@@ -412,17 +423,8 @@
     </div>
 
     <div class="settings-card">
-      <h3>Timing</h3>
+      <h3>Alert Boards</h3>
       <div class="form-grid-2">
-        <div class="form-row">
-          <label>Duplicate Cooldown</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5"
-                   style="width:80px;flex-shrink:0">
-            <span style="font-size:12px;color:var(--text2)">seconds &mdash; 0 to disable</span>
-          </div>
-          <div class="form-hint">Repeat detections of the same sequence within this window are silently ignored as duplicates.</div>
-        </div>
         <div class="form-row">
           <label>Alert Board Timeout</label>
           <select id="s-return">
@@ -433,6 +435,13 @@
             <option value="120">2 minutes</option>
           </select>
           <div class="form-hint">How long the alert board stays up after the stack window closes.</div>
+        </div>
+        <div class="form-row">
+          <label class="checkbox-label" style="margin-top:20px">
+            <input id="s-dashboard-audio" type="checkbox">
+            <span>Play alert audio on Alert Dashboard browsers</span>
+          </label>
+          <div class="form-hint">When enabled, kiosk displays running the Alert Dashboard will play the alert sounds through the browser's speakers.</div>
         </div>
       </div>
     </div>
@@ -1330,6 +1339,7 @@ async function loadSettings() {
     });
     wsel.value = cfg.weather_entity || '';
     $('s-show-weather').checked = (cfg.show_weather !== false);
+    $('s-dashboard-audio').checked = !!cfg.dashboard_audio;
     // Audio devices
     const ad = await api('GET', '/api/setup/audio_devices');
     const adsel = $('s-audio-device');
@@ -1351,6 +1361,7 @@ async function saveSettings() {
       station_name:      $('s-station').value.trim(),
       weather_entity:    $('s-weather').value,
       show_weather:      $('s-show-weather').checked,
+      dashboard_audio:   $('s-dashboard-audio').checked,
       stack_window:      parseFloat($('s-stack').value) || 60,
       return_timeout:    parseInt($('s-return').value),
       page_sequence_gap: parseFloat($('s-gap').value) || 3,

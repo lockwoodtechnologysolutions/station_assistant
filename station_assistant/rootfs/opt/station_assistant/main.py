@@ -645,6 +645,8 @@ def api_settings_save():
             ha._cached_stream_base = ""
         if "show_weather" in data:
             new_cfg["show_weather"] = bool(data["show_weather"])
+        if "dashboard_audio" in data:
+            new_cfg["dashboard_audio"] = bool(data["dashboard_audio"])
         sa_config.save(new_cfg)
 
         # ── Update tone sequences only if caller supplied tone_N_* fields ─────
