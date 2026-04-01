@@ -203,7 +203,7 @@
   </button>
   <button class="tab-btn" data-tab="monitor">📊 Audio Monitor</button>
   <button class="tab-btn" data-tab="log">
-    📋 Detection Log
+    📋 Alert Log
     <span id="log-count-badge" class="tab-count">0</span>
   </button>
   <button class="tab-btn" data-tab="tones">🔊 Alert Tones</button>
@@ -301,21 +301,21 @@
   </div>
 </div>
 
-<!-- ═══ Tab: Detection Log ════════════════════════════════════════════════════ -->
+<!-- ═══ Tab: Alert Log ════════════════════════════════════════════════════ -->
 <div id="tab-log" class="tab-content">
   <div class="toolbar">
-    <h2>Detection Log</h2>
+    <h2>Alert Log</h2>
     <button class="btn btn-danger-outline" onclick="clearLog()">🗑 Clear Log</button>
   </div>
   <div id="log-empty" class="empty-state" style="display:none">
     <div class="empty-icon">📭</div>
-    <div class="empty-title">No detections yet</div>
+    <div class="empty-title">No alerts yet</div>
     <div class="empty-sub">Decoded paging sequences will appear here.</div>
   </div>
   <div class="table-wrap" id="log-table-wrap">
     <table class="data-table">
       <thead><tr>
-        <th>Timestamp</th><th>Sequence Name</th><th>Tone A (Hz)</th><th>Tone B (Hz)</th><th>Confidence</th>
+        <th>Timestamp</th><th>Source</th><th>Sequence Name</th><th>Tone A (Hz)</th><th>Tone B (Hz)</th><th>Confidence</th>
       </tr></thead>
       <tbody id="log-tbody"></tbody>
     </table>
@@ -702,6 +702,21 @@ function removePlayer(idx) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
+function _fmtLocalTime(utcStr) {
+  if (!utcStr) return '—';
+  try {
+    // Parse UTC string and convert to browser's local timezone
+    const d = new Date(utcStr.endsWith('Z') ? utcStr : utcStr + 'Z');
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${y}-${mo}-${da} ${h}:${mi}:${s}`;
+  } catch(e) { return utcStr.replace('T', ' ').slice(0, 19); }
+}
+
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
                   .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -773,7 +788,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
           clearTimeout(ledTimers[d.seq_id]);
           ledTimers[d.seq_id] = setTimeout(() => led.classList.remove('active'), 5000);
         }
-        // Keep the Detection Log badge count current as detections arrive
+        // Keep the Alert Log badge count current as detections arrive
         const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab;
         if (activeTab === 'log') {
           loadLog(); // refreshes badge from server and re-renders table
@@ -839,7 +854,7 @@ function renderSequences() {
       <td class="mono">${s.auto_reset_seconds}</td>
       <td>
         <div style="display:flex;gap:4px;align-items:center">
-          <button class="btn btn-icon btn-sm" onclick="testSeq('${s.id}')" title="Fire test alert">&#x25B6;</button>
+          <button class="btn btn-icon btn-sm" onclick="testSeq('${s.id}')" title="Trigger test alert">&#x25B6;</button>
           <button class="btn btn-icon btn-sm" onclick="openEditModal('${s.id}')" title="Edit sequence">&#x270F;&#xFE0F;</button>
           <a class="btn btn-icon btn-sm" href="${haUrl}" target="_blank" rel="noopener" title="Open HA Automation">&#x1F916;</a>
           <button class="btn btn-danger-outline btn-sm" onclick="confirmDelete('${s.id}','${esc(s.name)}')" title="Delete">&#x1F5D1;&#xFE0F;</button>
@@ -1400,19 +1415,24 @@ async function loadLog() {
     empty.style.display = 'block'; wrapper.style.display = 'none'; return;
   }
   empty.style.display = 'none'; wrapper.style.display = 'block';
-  $('log-tbody').innerHTML = dets.map(d => `
+  $('log-tbody').innerHTML = dets.map(d => {
+    const src = d.source === 'test'
+      ? '<span style="color:var(--warn)">Manual Test</span>'
+      : '<span style="color:var(--success)">Two-Tone Decoded</span>';
+    return `
     <tr>
-      <td class="mono">${(d.detected_at || '').replace('T', ' ').slice(0, 19)}</td>
+      <td class="mono">${_fmtLocalTime(d.detected_at)}</td>
+      <td>${src}</td>
       <td>${esc(d.seq_name || d.name || '—')}</td>
       <td class="mono">${d.tone1_hz || '—'}</td>
       <td class="mono">${d.tone2_hz || '—'}</td>
       <td class="mono">${d.confidence !== undefined ? (d.confidence * 100).toFixed(0) + '%' : '—'}</td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
 async function clearLog() {
-  if (!confirm('Clear all detection log entries?')) return;
+  if (!confirm('Clear all alert log entries?')) return;
   await api('POST', '/api/detections/clear');
   await loadLog();
   toast('Detection log cleared.');

@@ -38,21 +38,33 @@ def init_db() -> None:
                 slug        TEXT    NOT NULL,
                 tone1_hz    REAL    NOT NULL,
                 tone2_hz    REAL    NOT NULL,
-                confidence  REAL    NOT NULL
+                confidence  REAL    NOT NULL,
+                source      TEXT    NOT NULL DEFAULT 'decoded'
             )
         """)
+        # Add source column to existing databases (migration)
+        try:
+            conn.execute("ALTER TABLE detections ADD COLUMN source TEXT NOT NULL DEFAULT 'decoded'")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
         conn.commit()
 
 
-def log_detection(seq: dict, confidence: float, detected_at: str) -> None:
-    """Insert a detection record."""
+def log_detection(seq: dict, confidence: float, detected_at: str,
+                  source: str = "decoded") -> None:
+    """Insert a detection record.
+
+    Args:
+        source: 'decoded' for real two-tone detections, 'test' for manual triggers.
+    """
     with _lock:
         try:
             conn = _get_conn()
             conn.execute(
                 """INSERT INTO detections
-                   (detected_at, seq_id, seq_name, slug, tone1_hz, tone2_hz, confidence)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (detected_at, seq_id, seq_name, slug, tone1_hz, tone2_hz, confidence, source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     detected_at,
                     seq["id"],
@@ -61,6 +73,7 @@ def log_detection(seq: dict, confidence: float, detected_at: str) -> None:
                     seq["tone1_hz"],
                     seq["tone2_hz"],
                     round(confidence, 3),
+                    source,
                 ),
             )
             conn.commit()

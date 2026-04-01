@@ -966,7 +966,7 @@ def api_test_tone(seq_id):
         stack_mgr.on_tone_detected(seq, confidence=1.0)
 
         # Log to DB so the Last Alert bar on the dashboard reflects the test
-        dl.log_detection(seq, 1.0, _now_utc())
+        dl.log_detection(seq, 1.0, _now_utc(), source="test")
 
         logger.info("Test tone fired: %s", seq["name"])
         return jsonify({"status": "ok", "message": f"Test alert: {seq['name']}"})
