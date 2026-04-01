@@ -249,6 +249,46 @@ def _get_mp3_duration(path: Path) -> Optional[float]:
     return None
 
 
+def _get_mp3_sample_rate(path: Path) -> Optional[int]:
+    """Return the sample rate of an MP3 file, or None on failure."""
+    try:
+        with open(path, "rb") as f:
+            header = f.read(10)
+            if len(header) < 10:
+                return None
+            if header[:3] == b"ID3":
+                tag_size = (
+                    (header[6] & 0x7F) << 21
+                    | (header[7] & 0x7F) << 14
+                    | (header[8] & 0x7F) << 7
+                    | (header[9] & 0x7F)
+                )
+                f.seek(10 + tag_size)
+            else:
+                f.seek(0)
+            buf = f.read(4)
+            attempts = 0
+            while len(buf) == 4 and attempts < 4096:
+                if buf[0] == 0xFF and (buf[1] & 0xE0) == 0xE0:
+                    ver_bits = (buf[1] >> 3) & 0x03
+                    sr_index = (buf[2] >> 2) & 0x03
+                    sr_tables = {
+                        0x03: [44100, 48000, 32000, 0],
+                        0x02: [22050, 24000, 16000, 0],
+                        0x00: [11025, 12000, 8000, 0],
+                    }
+                    sr_table = sr_tables.get(ver_bits, [0, 0, 0, 0])
+                    sr = sr_table[sr_index]
+                    if sr > 0:
+                        return sr
+                f.seek(-3, 1)
+                buf = f.read(4)
+                attempts += 1
+    except Exception:
+        pass
+    return None
+
+
 def get_sound_duration(filename: str) -> Optional[float]:
     """Return the duration in seconds of a local sound file (MP3 or WAV)."""
     path = _find_sound_file(filename)
@@ -296,24 +336,31 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
                 safe = str(p).replace("'", "'\\''")
                 f.write(f"file '{safe}'\n")
 
-        # Try stream copy first (instant, no re-encoding).
-        # Falls back to re-encode if stream copy produces broken output
-        # (e.g. files with different sample rates causing chipmunk effect).
-        result = subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-f", "concat",
-                "-safe", "0",
-                "-i", str(concat_list),
-                "-c", "copy",
-                str(out_path),
-            ],
-            capture_output=True, text=True, timeout=10,
-        )
+        # Check if all files share the same sample rate.
+        # If so, use stream copy (instant). If not, re-encode (slower
+        # but prevents chipmunk effect on LinkPlay devices).
+        sample_rates = set()
+        for p in paths:
+            sr = _get_mp3_sample_rate(p)
+            if sr:
+                sample_rates.add(sr)
 
-        if result.returncode != 0:
-            # Stream copy failed — re-encode to normalize sample rates
-            logger.debug("concatenate_sounds: stream copy failed, re-encoding")
+        if len(sample_rates) <= 1:
+            # All same rate (or couldn't detect) — stream copy is safe
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(concat_list),
+                    "-c", "copy",
+                    str(out_path),
+                ],
+                capture_output=True, text=True, timeout=10,
+            )
+        else:
+            # Mixed sample rates — must re-encode
+            logger.info("concatenate_sounds: mixed sample rates %s, re-encoding", sample_rates)
             result = subprocess.run(
                 [
                     "ffmpeg", "-y",
