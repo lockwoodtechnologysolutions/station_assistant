@@ -145,7 +145,8 @@ def _guard_direct_access():
         return
     if (path.startswith("/api/stream")
             or path.startswith("/api/sounds/")
-            or path == "/api/audio/live"):
+            or path == "/api/audio/live"
+            or path == "/api/audio/monitor"):
         return
 
     # All other /api/* routes — configuration/management — return 403.
@@ -1048,6 +1049,109 @@ def api_audio_live():
             "X-Accel-Buffering":   "no",
             "Connection":          "keep-alive",
             "icy-name":            "Station Assistant Line In",
+        },
+    )
+
+
+# ── Browser Line In monitor (diagnostic, separate from Live PA) ───────────────
+
+@app.route("/api/audio/monitor")
+def api_audio_monitor():
+    """Lightweight Line In stream for browser diagnostic listening.
+
+    Completely separate from the Live PA transcoder — uses its own
+    ffmpeg process and AudioStreamBus subscriber so it cannot interfere
+    with media player streams.
+    """
+    sub_q = decoder.stream_bus.subscribe()
+    sr = decoder.stream_bus.sample_rate
+
+    proc = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-hide_banner", "-loglevel", "error",
+            "-f", "s16le", "-ar", str(sr), "-ac", "1",
+            "-i", "pipe:0",
+            "-b:a", "96k", "-f", "mp3", "pipe:1",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
+    mp3_q = queue.Queue(maxsize=200)
+    stop = threading.Event()
+
+    def feeder():
+        try:
+            while not stop.is_set():
+                try:
+                    chunk = sub_q.get(timeout=1.0)
+                except queue.Empty:
+                    chunk = b'\x00\x00' * 128
+                try:
+                    proc.stdin.write(chunk)
+                    proc.stdin.flush()
+                except (BrokenPipeError, OSError):
+                    break
+        except Exception:
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except Exception:
+                pass
+
+    def reader():
+        try:
+            while not stop.is_set():
+                data = proc.stdout.read(4096)
+                if not data:
+                    break
+                try:
+                    mp3_q.put_nowait(data)
+                except queue.Full:
+                    try:
+                        mp3_q.get_nowait()
+                    except queue.Empty:
+                        pass
+                    mp3_q.put_nowait(data)
+        except Exception:
+            pass
+
+    threading.Thread(target=feeder, daemon=True, name="mon-feed").start()
+    threading.Thread(target=reader, daemon=True, name="mon-read").start()
+
+    def generate():
+        try:
+            while True:
+                try:
+                    data = mp3_q.get(timeout=3.0)
+                    yield data
+                except queue.Empty:
+                    if proc.poll() is not None:
+                        return
+        except GeneratorExit:
+            pass
+        finally:
+            stop.set()
+            decoder.stream_bus.unsubscribe(sub_q)
+            try:
+                proc.terminate()
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    return app.response_class(
+        generate(),
+        mimetype="audio/mpeg",
+        headers={
+            "Cache-Control":     "no-store",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
         },
     )
 

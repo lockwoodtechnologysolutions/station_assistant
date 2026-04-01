@@ -283,6 +283,14 @@
     </div>
   </div>
   <div class="monitor-card">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="monitor-label">Line In Monitor</div>
+      <button id="line-in-btn" class="btn btn-secondary btn-sm" onclick="toggleLineInMonitor()" style="font-size:12px">Listen</button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:4px">Listen to incoming Line In audio in this browser for diagnostic purposes.</div>
+    <audio id="line-in-monitor-audio" style="display:none"></audio>
+  </div>
+  <div class="monitor-card">
     <div class="monitor-label">Live Frequency Detection — Monitored Targets</div>
     <div id="goertzel-display" class="goertzel-grid">
       <div style="color:var(--text2);font-size:13px;padding:8px">No sequences configured.</div>
@@ -640,6 +648,7 @@ let mediaPlayers = [];
 let selectedPlayers = [];   // current modal's chosen entity IDs
 let levelInterval = null;
 let peakInterval  = null;
+let _peakHoldTimer = null;
 let gainSaveTimer = null;
 let sseSource     = null;  // EventSource for live goertzel updates
 
@@ -1198,11 +1207,14 @@ async function pollPeak() {
       hzEl.style.color  = '#3db8c8';
       barEl.style.width = `${Math.min(100, mag * 100).toFixed(1)}%`;
       noteEl.textContent = `${freqToNote(freq)} | mag: ${mag.toFixed(4)}`;
-    } else {
-      hzEl.textContent  = '— Hz';
-      hzEl.style.color  = 'var(--text2)';
-      barEl.style.width = '0%';
-      noteEl.textContent = '—';
+      // Peak hold — keep the display visible for 3 seconds after signal drops
+      clearTimeout(_peakHoldTimer);
+      _peakHoldTimer = setTimeout(() => {
+        hzEl.textContent  = '— Hz';
+        hzEl.style.color  = 'var(--text2)';
+        barEl.style.width = '0%';
+        noteEl.textContent = '—';
+      }, 3000);
     }
   } catch(e) {}
 }
@@ -1299,6 +1311,34 @@ function startCooldownTimer(seqId, seconds) {
       delete _cooldownTimers[seqId];
     }
   }, 1000);
+}
+
+// ── Line In browser monitor (diagnostic) ─────────────────────────────────────
+
+let _lineInMonActive = false;
+function toggleLineInMonitor() {
+  const audio = $('line-in-monitor-audio');
+  const btn   = $('line-in-btn');
+  if (!audio || !btn) return;
+
+  if (_lineInMonActive) {
+    audio.pause();
+    audio.src = '';
+    btn.textContent = 'Listen';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-secondary');
+    _lineInMonActive = false;
+  } else {
+    audio.src = SCRIPT_ROOT + '/api/audio/monitor';
+    audio.play().catch(e => {
+      console.warn('Line In monitor play failed:', e);
+      toast('Browser blocked audio playback. Click the page first.', 'err');
+    });
+    btn.textContent = 'Stop';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-danger');
+    _lineInMonActive = true;
+  }
 }
 
 async function restartDecoder() {
