@@ -700,7 +700,7 @@ def api_settings_save():
             new_cfg["dashboard_audio"] = bool(data["dashboard_audio"])
         if "live_pa_gain" in data:
             try:
-                new_cfg["live_pa_gain"] = max(0, min(20, int(data["live_pa_gain"])))
+                new_cfg["live_pa_gain"] = max(0, min(40, int(data["live_pa_gain"])))
             except (ValueError, TypeError):
                 new_cfg["live_pa_gain"] = 6
         sa_config.save(new_cfg)

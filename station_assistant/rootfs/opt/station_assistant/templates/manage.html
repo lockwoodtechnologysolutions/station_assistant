@@ -500,11 +500,11 @@
         <div class="form-row">
           <label>Live PA Volume Boost</label>
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="s-live-pa-gain" min="0" max="20" step="1" value="6"
+            <input type="range" id="s-live-pa-gain" min="0" max="40" step="1" value="12"
                    style="flex:1;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = this.value + ' dB'">
             <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:44px;text-align:right">6 dB</span>
           </div>
-          <div class="form-hint">Boost the Live PA stream volume to match alert sound levels. 0 = no boost, 6 = default, 20 = maximum.</div>
+          <div class="form-hint">Boost the Live PA stream volume to match alert sound levels. 0 = no boost, 12 = default, 40 = maximum. Increase if dispatch audio is too quiet.</div>
         </div>
       </div>
     </div>
