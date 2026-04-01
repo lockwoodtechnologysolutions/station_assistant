@@ -879,6 +879,7 @@ def api_status():
         "tones":     tones,
         "config":    cfg,
         "last_detection": last,
+        "relay_remaining": round(stack_mgr.relay_remaining, 0),
         "ha": {
             "connected": ha_ok,
             "message":   ha_msg,

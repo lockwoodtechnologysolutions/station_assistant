@@ -187,6 +187,7 @@
     <span class="header-version">v{{ app_version }}</span>
   </div>
   <div class="header-right">
+    <span id="live-pa-badge" class="badge" style="display:none;background:rgba(232,167,71,0.2);color:#e8a747;font-family:var(--mono);font-size:11px;">Live PA: —</span>
     <a class="header-dash-link" id="dash-link" href="#">🖥 Alert Board</a>
     <span id="ha-badge"  class="badge badge-unknown">HA: Checking…</span>
     <span id="dec-badge" class="badge badge-unknown">Audio: Checking…</span>
@@ -1256,6 +1257,20 @@ async function loadDeviceInfo() {
       running ? `<span style="color:var(--success)">✓ Running</span> — Uptime: ${dec.uptime || '0s'} — Detections: ${dec.total_detections || 0}`
       : err    ? `<span style="color:var(--danger)">✗ Error: ${esc(err)}</span>`
                : `<span style="color:var(--warn)">◼ Stopped</span>`;
+
+    // Update Live PA badge in header
+    const relayRemaining = d.relay_remaining || 0;
+    const paBadge = $('live-pa-badge');
+    if (paBadge) {
+      if (relayRemaining > 0) {
+        const mins = Math.floor(relayRemaining / 60);
+        const secs = Math.floor(relayRemaining % 60);
+        paBadge.textContent = `Live PA: ${mins}:${secs.toString().padStart(2, '0')}`;
+        paBadge.style.display = 'inline-block';
+      } else {
+        paBadge.style.display = 'none';
+      }
+    }
   } catch(e) {}
 }
 
@@ -1497,6 +1512,8 @@ function confirmReset() {
 // HEADER BADGES
 // ════════════════════════════════════════════════════════════════════════════
 
+let _relayPollInterval = null;
+
 async function updateBadges() {
   try {
     const d   = await api('GET', '/api/status');
@@ -1513,7 +1530,35 @@ async function updateBadges() {
     } else {
       decb.textContent = 'Audio: Stopped'; decb.className = 'badge badge-warn';
     }
+    // Live PA relay countdown badge
+    _updateRelayBadge(d.relay_remaining || 0);
   } catch(e) {}
+}
+
+function _updateRelayBadge(remaining) {
+  const paBadge = $('live-pa-badge');
+  if (!paBadge) return;
+  if (remaining > 0) {
+    const mins = Math.floor(remaining / 60);
+    const secs = Math.floor(remaining % 60);
+    paBadge.textContent = `Live PA: ${mins}:${secs.toString().padStart(2, '0')}`;
+    paBadge.style.display = 'inline-block';
+    // Poll more frequently while relay is active
+    if (!_relayPollInterval) {
+      _relayPollInterval = setInterval(async () => {
+        try {
+          const d = await api('GET', '/api/status');
+          _updateRelayBadge(d.relay_remaining || 0);
+        } catch(e) {}
+      }, 2000);
+    }
+  } else {
+    paBadge.style.display = 'none';
+    if (_relayPollInterval) {
+      clearInterval(_relayPollInterval);
+      _relayPollInterval = null;
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════════

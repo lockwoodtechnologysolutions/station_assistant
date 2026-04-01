@@ -59,6 +59,8 @@ class StackManager:
         # Line In relay state
         self._line_in_stop = threading.Event()
         self._streaming_entities: list = []
+        self._relay_start_time: float = 0.0
+        self._relay_duration: float = 0.0
 
     # ── Public Interface ───────────────────────────────────────────────────
 
@@ -69,6 +71,15 @@ class StackManager:
     def set_idle_callback(self, fn: Callable) -> None:
         """Register function called when the board returns to idle."""
         self._idle_cb = fn
+
+    @property
+    def relay_remaining(self) -> float:
+        """Seconds remaining on the Line In relay, or 0 if not active."""
+        if self._relay_start_time <= 0 or self._relay_duration <= 0:
+            return 0.0
+        elapsed = time.time() - self._relay_start_time
+        remaining = self._relay_duration - elapsed
+        return max(0.0, remaining)
 
     def set_prewarm_callback(self, fn: Callable) -> None:
         """Register function called to pre-warm the live transcoder."""
@@ -415,12 +426,24 @@ class StackManager:
         stream_url = ha.get_addon_stream_url() + "/api/audio/live"
         self._line_in_stop.clear()
         self._streaming_entities = list(entities)
+        self._relay_start_time = time.time()
+        self._relay_duration = duration
 
         logger.info(
             "Line In relay: streaming %s → %s for %.0fs",
             stream_url, entities, duration,
         )
         ha.play_url(entities, stream_url)
+
+        # Notify UI that relay started
+        if self._alert_cb:
+            try:
+                self._alert_cb({
+                    "event": "relay_start",
+                    "duration": duration,
+                })
+            except Exception:
+                pass
 
         # Wait for the configured duration, checking for early stop every 0.5s
         waited = 0.0
@@ -435,7 +458,16 @@ class StackManager:
         # Stop the media players to close the stream connection
         ha.stop_media(entities)
         self._streaming_entities = []
+        self._relay_start_time = 0.0
+        self._relay_duration = 0.0
         logger.info("Line In relay: finished (%.0fs)", waited)
+
+        # Notify UI that relay ended
+        if self._alert_cb:
+            try:
+                self._alert_cb({"event": "relay_stop"})
+            except Exception:
+                pass
 
         # Notify main.py to stop the transcoder now that the relay is done
         if self._relay_done_cb:
