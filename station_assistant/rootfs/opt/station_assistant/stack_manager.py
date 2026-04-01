@@ -433,9 +433,12 @@ class StackManager:
         logger.info("Line In relay: finished (%.0fs)", waited)
 
     def _go_idle(self) -> None:
-        """Clear stack, cancel timers, stop Line In relay, invoke idle callback."""
+        """Clear stack, cancel timers, invoke idle callback.
+
+        Does NOT stop the Line In relay — it runs for its full configured
+        duration independently of the dashboard state.
+        """
         self._cancel_timers()
-        self._line_in_stop.set()  # signal audio thread to stop Line In relay
         self._stack          = []
         self._stack_open     = False
         self._incident_start = None
