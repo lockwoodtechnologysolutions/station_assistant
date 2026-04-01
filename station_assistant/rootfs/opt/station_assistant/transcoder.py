@@ -49,6 +49,11 @@ class LiveTranscoder:
     def running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
+    def clear_backlog(self):
+        """Clear buffered audio. Call before starting Live PA relay."""
+        with self._sub_lock:
+            self._backlog.clear()
+
     def subscribe(self) -> queue.Queue:
         """Add a per-client consumer queue, pre-filled with recent audio."""
         q: queue.Queue = queue.Queue(maxsize=TRANSCODER_QUEUE_MAXSIZE)
