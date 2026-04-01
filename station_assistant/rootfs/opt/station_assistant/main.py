@@ -198,13 +198,13 @@ def _on_stack_alert(payload: dict) -> None:
 def _on_stack_idle(payload: dict) -> None:
     """Broadcast idle state to all connected dashboard clients."""
     socketio.emit("alert", payload)
-    _live_transcoder.stop()
     logger.debug("SocketIO broadcast: idle")
 
 
 stack_mgr.set_alert_callback(_on_stack_alert)
 stack_mgr.set_idle_callback(_on_stack_idle)
 stack_mgr.set_prewarm_callback(lambda: _live_transcoder.start())
+stack_mgr.set_relay_done_callback(lambda: _live_transcoder.stop())
 
 
 # ══════════════════════════════════════════════════════════════════════════════

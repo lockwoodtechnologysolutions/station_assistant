@@ -45,6 +45,7 @@ class StackManager:
         self._alert_cb: Optional[Callable] = None
         self._idle_cb:  Optional[Callable] = None
         self._prewarm_cb: Optional[Callable] = None
+        self._relay_done_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -72,6 +73,10 @@ class StackManager:
     def set_prewarm_callback(self, fn: Callable) -> None:
         """Register function called to pre-warm the live transcoder."""
         self._prewarm_cb = fn
+
+    def set_relay_done_callback(self, fn: Callable) -> None:
+        """Register function called when the Line In relay finishes."""
+        self._relay_done_cb = fn
 
     def on_tone_detected(self, seq: dict, confidence: float) -> None:
         """
@@ -431,6 +436,13 @@ class StackManager:
         ha.stop_media(entities)
         self._streaming_entities = []
         logger.info("Line In relay: finished (%.0fs)", waited)
+
+        # Notify main.py to stop the transcoder now that the relay is done
+        if self._relay_done_cb:
+            try:
+                self._relay_done_cb()
+            except Exception as e:
+                logger.error("Relay done callback error: %s", e)
 
     def _go_idle(self) -> None:
         """Clear stack, cancel timers, invoke idle callback.
