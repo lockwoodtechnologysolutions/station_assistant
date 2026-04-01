@@ -427,15 +427,29 @@ def wait_until_idle(entity_id: str, timeout: float = 120.0,
     Wait for a media_player to finish playing, then return.
 
     If *known_duration* is provided (seconds), sleeps for that duration
-    plus a small buffer instead of polling the player state.
+    then polls briefly to confirm the player has actually finished.
+    This handles slow-starting players (piCorePlayer/SlimProto) that
+    may still be playing after the expected duration.
     """
     if known_duration is not None and known_duration > 0:
-        sleep_for = known_duration + 0.3
-        logger.debug(
-            "wait_until_idle: %s sleeping %.1fs (known_duration=%.1f)",
-            entity_id, sleep_for, known_duration,
-        )
-        time.sleep(sleep_for)
+        # Sleep for the file duration first
+        time.sleep(known_duration)
+        # Then poll for up to 10 seconds to confirm the player is done
+        poll_deadline = time.time() + 10.0
+        playing_seen = False
+        while time.time() < poll_deadline:
+            state_data = _get(f"/states/{entity_id}", timeout=3)
+            if state_data:
+                state = state_data.get("state", "")
+                if state == "playing":
+                    playing_seen = True
+                elif playing_seen:
+                    # Was playing, now stopped — done
+                    return True
+                elif not playing_seen and time.time() > (poll_deadline - 7.0):
+                    # Never saw playing after 3 seconds of polling — assume done
+                    return True
+            time.sleep(0.3)
         return True
 
     # Fallback: poll player state
