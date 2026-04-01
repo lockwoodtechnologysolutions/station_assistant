@@ -536,7 +536,8 @@ def api_sounds_list():
     media_dir = Path("/media/station_assistant")
     if media_dir.exists():
         for f in media_dir.glob("*.mp3"):
-            sounds.add(f.name)
+            if not f.name.startswith("_"):  # skip internal files like _combined_alert.mp3
+                sounds.add(f.name)
     return jsonify({"status": "ok", "sounds": sorted(sounds)})
 
 
@@ -648,6 +649,11 @@ def api_settings_save():
             new_cfg["show_weather"] = bool(data["show_weather"])
         if "dashboard_audio" in data:
             new_cfg["dashboard_audio"] = bool(data["dashboard_audio"])
+        if "live_pa_gain" in data:
+            try:
+                new_cfg["live_pa_gain"] = max(0, min(20, int(data["live_pa_gain"])))
+            except (ValueError, TypeError):
+                new_cfg["live_pa_gain"] = 6
         sa_config.save(new_cfg)
 
         # ── Update tone sequences only if caller supplied tone_N_* fields ─────
@@ -1067,14 +1073,24 @@ def api_audio_monitor():
     sub_q = decoder.stream_bus.subscribe()
     sr = decoder.stream_bus.sample_rate
 
+    # Read volume boost from config
+    try:
+        gain_db = int(sa_config.load().get("live_pa_gain", 6))
+    except Exception:
+        gain_db = 6
+
+    cmd = [
+        "ffmpeg",
+        "-hide_banner", "-loglevel", "error",
+        "-f", "s16le", "-ar", str(sr), "-ac", "1",
+        "-i", "pipe:0",
+    ]
+    if gain_db > 0:
+        cmd += ["-af", f"volume={gain_db}dB"]
+    cmd += ["-b:a", "96k", "-f", "mp3", "pipe:1"]
+
     proc = subprocess.Popen(
-        [
-            "ffmpeg",
-            "-hide_banner", "-loglevel", "error",
-            "-f", "s16le", "-ar", str(sr), "-ac", "1",
-            "-i", "pipe:0",
-            "-b:a", "96k", "-f", "mp3", "pipe:1",
-        ],
+        cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

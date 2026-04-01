@@ -448,13 +448,6 @@
           </select>
           <div class="form-hint">How long the alert board stays up after the stack window closes.</div>
         </div>
-        <div class="form-row">
-          <label class="checkbox-label" style="margin-top:20px">
-            <input id="s-dashboard-audio" type="checkbox">
-            <span>Play alert audio on Alert Dashboard browsers</span>
-          </label>
-          <div class="form-hint">When enabled, kiosk displays running the Alert Dashboard will play the alert sounds through the browser's speakers.</div>
-        </div>
       </div>
     </div>
 
@@ -478,6 +471,15 @@
           <label>Stream Base URL</label>
           <input type="text" id="s-stream-url" placeholder="http://your-ha-ip:8099">
           <div class="form-hint">The URL media players use to reach this addon for Line In audio. Set to your HA host IP + port 8099. Leave blank for auto-detect.</div>
+        </div>
+        <div class="form-row">
+          <label>Live PA Volume Boost</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="s-live-pa-gain" min="0" max="20" step="1" value="6"
+                   style="flex:1;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = this.value + ' dB'">
+            <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:44px;text-align:right">6 dB</span>
+          </div>
+          <div class="form-hint">Boost the Live PA stream volume to match alert sound levels. 0 = no boost, 6 = default, 20 = maximum.</div>
         </div>
       </div>
     </div>
@@ -1419,6 +1421,9 @@ async function loadSettings() {
     $('s-dupe-cooldown').value = String(cfg.dupe_cooldown ?? 120);
     $('s-line-in-dur').value   = String(cfg.line_in_duration ?? 120);
     $('s-stream-url').value    = cfg.stream_base_url || '';
+    const paGain = cfg.live_pa_gain ?? 6;
+    $('s-live-pa-gain').value = paGain;
+    $('s-live-pa-gain-val').textContent = paGain + ' dB';
     // Multi-unit ramp-up sound selector
     const sndData = await api('GET', '/api/setup/sounds');
     const musel   = $('s-multi-sound');
@@ -1442,7 +1447,6 @@ async function loadSettings() {
     });
     wsel.value = cfg.weather_entity || '';
     $('s-show-weather').checked = (cfg.show_weather !== false);
-    $('s-dashboard-audio').checked = !!cfg.dashboard_audio;
     // Audio devices
     const ad = await api('GET', '/api/setup/audio_devices');
     const adsel = $('s-audio-device');
@@ -1464,13 +1468,13 @@ async function saveSettings() {
       station_name:      $('s-station').value.trim(),
       weather_entity:    $('s-weather').value,
       show_weather:      $('s-show-weather').checked,
-      dashboard_audio:   $('s-dashboard-audio').checked,
       stack_window:      parseFloat($('s-stack').value) || 60,
       return_timeout:    parseInt($('s-return').value),
       page_sequence_gap: parseFloat($('s-gap').value) || 3,
       dupe_cooldown:     parseFloat($('s-dupe-cooldown').value) || 0,
       line_in_duration:  parseFloat($('s-line-in-dur').value) || 0,
       stream_base_url:   ($('s-stream-url').value || '').trim(),
+      live_pa_gain:      parseInt($('s-live-pa-gain').value) || 6,
       multi_unit_sound:  $('s-multi-sound').value,
       multi_unit_color:  $('s-multi-color').value,
       audio_device:      parseInt($('s-audio-device').value),

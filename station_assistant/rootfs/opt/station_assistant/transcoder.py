@@ -87,14 +87,26 @@ class LiveTranscoder:
         self._sub_q = self._stream_bus.subscribe()
         self._stop = threading.Event()
 
+        # Read volume boost from config
+        try:
+            from sa_config import SAConfig
+            gain_db = int(SAConfig().load().get("live_pa_gain", 6))
+        except Exception:
+            gain_db = 6
+
+        # Build ffmpeg command with optional volume filter
+        cmd = [
+            "ffmpeg",
+            "-hide_banner", "-loglevel", "warning",
+            "-f", "s16le", "-ar", str(sr), "-ac", "1",
+            "-i", "pipe:0",
+        ]
+        if gain_db > 0:
+            cmd += ["-af", f"volume={gain_db}dB"]
+        cmd += ["-b:a", MP3_BITRATE, "-f", "mp3", "pipe:1"]
+
         self._proc = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-hide_banner", "-loglevel", "warning",
-                "-f", "s16le", "-ar", str(sr), "-ac", "1",
-                "-i", "pipe:0",
-                "-b:a", MP3_BITRATE, "-f", "mp3", "pipe:1",
-            ],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
