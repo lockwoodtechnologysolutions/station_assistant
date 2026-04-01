@@ -131,6 +131,7 @@
     .level-db-text { position: absolute; right: 0; top: 50%; transform: translateY(-50%); font-family: var(--mono); font-size: 11px; color: var(--text2); background: var(--surface); padding: 0 4px; pointer-events: none; }
     .goertzel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
     .goertzel-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+    .tone-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
     .goertzel-name { font-size: 12px; font-weight: 600; margin-bottom: 8px; }
     .gz-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
     .gz-lbl { font-size: 11px; font-family: var(--mono); color: var(--text2); width: 70px; flex-shrink: 0; }
@@ -205,6 +206,7 @@
     📋 Detection Log
     <span id="log-count-badge" class="tab-count">0</span>
   </button>
+  <button class="tab-btn" data-tab="tones">🔊 Alert Tones</button>
   <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
 </nav>
 
@@ -318,6 +320,29 @@
       <tbody id="log-tbody"></tbody>
     </table>
   </div>
+</div>
+
+<!-- ═══ Tab: Settings ════════════════════════════════════════════════════════ -->
+<!-- ═══ Tab: Alert Tones ══════════════════════════════════════════════════════ -->
+<div id="tab-tones" class="tab-content">
+  <div class="toolbar">
+    <h2>Alert Tone Library</h2>
+    <label class="btn btn-primary" style="cursor:pointer">
+      + Upload Sound
+      <input type="file" accept="audio/mpeg,.mp3,audio/wav,.wav" style="display:none"
+             onchange="uploadToneLibrary(this)">
+    </label>
+  </div>
+  <p style="color:var(--text2);font-size:13px;margin-bottom:12px">
+    Upload MP3 or WAV files here. All files are automatically normalized to 44.1kHz mono for optimal playback.
+    Select these tones in your paging sequence configurations.
+  </p>
+  <div id="tone-library-empty" class="empty-state" style="display:none">
+    <div class="empty-icon" style="font-size:48px">🔇</div>
+    <div class="empty-title">No alert tones uploaded</div>
+    <div class="empty-sub">Upload MP3 or WAV files to build your tone library.</div>
+  </div>
+  <div id="tone-library-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
 </div>
 
 <!-- ═══ Tab: Settings ════════════════════════════════════════════════════════ -->
@@ -534,22 +559,14 @@
         <div class="sound-row">
           <select id="f-sound1"></select>
           <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound1').value)" title="Preview sound">&#9654;</button>
-          <label class="upload-label" title="Upload custom MP3">
-            ↑ Upload
-            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound1')">
-          </label>
         </div>
-        <div class="form-hint">Plays first when this tone fires — the initial ramp-up or station alert tone.</div>
+        <div class="form-hint">Plays first when this tone fires. Upload tones in the Alert Tones tab.</div>
       </div>
       <div class="form-row">
         <label>Apparatus/Assignment Tone 1 <span style="color:var(--text2);font-size:10px">OPTIONAL</span></label>
         <div class="sound-row">
           <select id="f-sound2"></select>
           <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound2').value)" title="Preview sound">&#9654;</button>
-          <label class="upload-label" title="Upload custom MP3">
-            ↑ Upload
-            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound2')">
-          </label>
         </div>
       </div>
       <div class="form-row">
@@ -557,10 +574,6 @@
         <div class="sound-row">
           <select id="f-sound3"></select>
           <button class="btn btn-icon btn-sm" onclick="playPreview($('f-sound3').value)" title="Preview sound">&#9654;</button>
-          <label class="upload-label" title="Upload custom MP3">
-            ↑ Upload
-            <input type="file" accept=".mp3,audio/mpeg" style="display:none" onchange="uploadSoundModal(this,'f-sound3')">
-          </label>
         </div>
       </div>
       <div class="form-row">
@@ -724,6 +737,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     $('tab-' + tab).classList.add('active');
     if (tab === 'monitor')  { startMonitor(); }
     if (tab === 'log')      { loadLog(); }
+    if (tab === 'tones')    { loadToneLibrary(); }
     if (tab === 'settings') { loadSettings(); }
     // Stop level polling when leaving monitor
     if (tab !== 'monitor' && levelInterval) {
@@ -1402,6 +1416,70 @@ async function clearLog() {
   await api('POST', '/api/detections/clear');
   await loadLog();
   toast('Detection log cleared.');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ALERT TONES TAB
+// ════════════════════════════════════════════════════════════════════════════
+
+async function loadToneLibrary() {
+  try {
+    const d = await api('GET', '/api/setup/sounds');
+    const sounds = d.sounds || [];
+    const grid = $('tone-library-grid');
+    const empty = $('tone-library-empty');
+    if (sounds.length === 0) {
+      empty.style.display = 'block';
+      grid.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.innerHTML = sounds.map(fn => {
+      const name = fn.replace(/\.mp3$/i, '').replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      return `<div class="tone-card" id="tc-${fn}">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <strong style="font-size:13px">${esc(name)}</strong>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-icon btn-sm" onclick="previewTone('${esc(fn)}')" title="Preview">&#9654;</button>
+            <button class="btn btn-danger-outline btn-sm" onclick="deleteTone('${esc(fn)}')" title="Delete">&#x1F5D1;</button>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-top:4px">${esc(fn)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+function previewTone(filename) {
+  const a = new Audio(SCRIPT_ROOT + '/api/sounds/' + encodeURIComponent(filename));
+  a.play().catch(() => {});
+}
+
+async function deleteTone(filename) {
+  if (!confirm(`Delete "${filename}"?`)) return;
+  try {
+    await api('DELETE', '/api/sounds/' + encodeURIComponent(filename));
+    toast('Sound deleted.');
+    loadToneLibrary();
+  } catch(e) { toast('Delete failed.', 'err'); }
+}
+
+async function uploadToneLibrary(input) {
+  if (!input.files[0]) return;
+  const fd = new FormData();
+  fd.append('sound', input.files[0]);
+  try {
+    const r = await fetch(SCRIPT_ROOT + '/api/setup/upload_sound', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (d.status === 'ok') {
+      toast('Sound uploaded and normalized: ' + d.filename);
+      loadToneLibrary();
+    } else {
+      toast(d.message || 'Upload failed.', 'err');
+    }
+  } catch(e) { toast('Upload failed.', 'err'); }
+  input.value = '';
 }
 
 // ════════════════════════════════════════════════════════════════════════════

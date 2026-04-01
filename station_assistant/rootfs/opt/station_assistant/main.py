@@ -543,53 +543,101 @@ def api_sounds_list():
 
 @app.route("/api/setup/upload_sound", methods=["POST"])
 def api_upload_sound():
-    """
-    Upload a custom MP3 sound file.
-    Saves to the addon sounds/ dir (always available), then mirrors to
-    /config/www/station_assistant/sounds/ (/local/ URL) and
-    /media/station_assistant/ (HA Media Browser).
+    """Upload a custom sound file (MP3 or WAV).
+
+    Re-encodes to 44.1kHz mono 128kbps MP3 on upload so all files in the
+    library share the same format.  This guarantees instant stream-copy
+    concatenation at alert time — no re-encoding delay.
     """
     if "sound" not in request.files:
         return jsonify({"status": "error", "message": "No file provided"}), 400
     file = request.files["sound"]
     if not file or not file.filename:
         return jsonify({"status": "error", "message": "No file selected"}), 400
-    if not file.filename.lower().endswith(".mp3"):
-        return jsonify({"status": "error", "message": "Only MP3 files are accepted"}), 400
-    # Strip any path components for safety
-    filename = Path(file.filename).name
-    # Save to bundled sounds dir (base for all other copies)
-    dst_bundled = BASE_DIR / "sounds" / filename
-    file.save(str(dst_bundled))
-    # Mirror to /config/www/ for /local/station_assistant/sounds/ URLs
+    if not file.filename.lower().endswith((".mp3", ".wav")):
+        return jsonify({"status": "error", "message": "Only MP3 and WAV files are accepted"}), 400
+
+    # Strip path components and ensure .mp3 extension
+    raw_name = Path(file.filename).stem
+    filename = raw_name + ".mp3"
+    safe_filename = Path(filename).name
+
+    # Save the raw upload to a temp file
+    tmp_raw = BASE_DIR / "sounds" / f"_upload_raw_{safe_filename}"
+    file.save(str(tmp_raw))
+
+    # Re-encode to normalized format (44.1kHz mono 128kbps)
+    dst_bundled = BASE_DIR / "sounds" / safe_filename
     try:
-        www_dir = Path("/config/www/station_assistant/sounds")
-        www_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(dst_bundled, www_dir / filename)
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(tmp_raw),
+                "-ar", "44100", "-ac", "1", "-b:a", "128k",
+                str(dst_bundled),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            logger.error("upload_sound: ffmpeg re-encode failed: %s", result.stderr[-200:])
+            tmp_raw.unlink(missing_ok=True)
+            return jsonify({"status": "error", "message": "Failed to process audio file"}), 500
     except Exception as e:
-        logger.warning("upload_sound: could not copy to /config/www/: %s", e)
-    # Mirror to /media/station_assistant/ for HA Media Browser
-    try:
-        media_dir = Path("/media/station_assistant")
-        media_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(dst_bundled, media_dir / filename)
-    except Exception as e:
-        logger.warning("upload_sound: could not copy to /media/: %s", e)
-    logger.info("Custom sound uploaded: %s", filename)
-    return jsonify({"status": "ok", "filename": filename})
+        logger.error("upload_sound: re-encode error: %s", e)
+        tmp_raw.unlink(missing_ok=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        tmp_raw.unlink(missing_ok=True)
+
+    # Mirror to /config/www/ and /media/
+    for dst_dir in [
+        Path("/config/www/station_assistant/sounds"),
+        Path("/media/station_assistant"),
+    ]:
+        try:
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dst_bundled, dst_dir / safe_filename)
+        except Exception as e:
+            logger.warning("upload_sound: could not copy to %s: %s", dst_dir, e)
+
+    logger.info("Sound uploaded and normalized: %s", safe_filename)
+    return jsonify({"status": "ok", "filename": safe_filename})
 
 
 @app.route("/api/sounds/<path:filename>")
 def api_serve_sound(filename):
     """Serve a sound file directly so the browser can preview it."""
-
-    safe_name = Path(filename).name   # strip any path traversal
+    safe_name = Path(filename).name
     bundled   = BASE_DIR / "sounds" / safe_name
     if bundled.exists():
         return send_file(str(bundled), mimetype="audio/mpeg")
     media = Path("/media/station_assistant") / safe_name
     if media.exists():
         return send_file(str(media), mimetype="audio/mpeg")
+    return jsonify({"status": "error", "message": "Sound not found"}), 404
+
+
+@app.route("/api/sounds/<path:filename>", methods=["DELETE"])
+def api_delete_sound(filename):
+    """Delete a custom sound file from the library."""
+    safe_name = Path(filename).name
+    if safe_name.startswith("_"):
+        return jsonify({"status": "error", "message": "Cannot delete internal files"}), 400
+
+    deleted = False
+    for search_dir in [
+        BASE_DIR / "sounds",
+        Path("/config/www/station_assistant/sounds"),
+        Path("/media/station_assistant"),
+    ]:
+        p = search_dir / safe_name
+        if p.exists():
+            p.unlink()
+            deleted = True
+
+    if deleted:
+        logger.info("Sound deleted: %s", safe_name)
+        return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "Sound not found"}), 404
 
 
@@ -1298,6 +1346,69 @@ def _fmt_uptime(seconds: float) -> str:
 # STARTUP
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _normalize_sound_file(path: Path) -> bool:
+    """Re-encode a single sound file to 44.1kHz/mono/128k if needed.
+
+    Returns True if the file was re-encoded, False if already normalized.
+    """
+    if path.name.startswith("_"):
+        return False
+    sr = ha._get_mp3_sample_rate(path)
+    if sr == 44100:
+        return False
+    tmp = path.with_suffix(".tmp.mp3")
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(path),
+                "-ar", "44100", "-ac", "1", "-b:a", "128k",
+                str(tmp),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            tmp.replace(path)
+            return True
+        tmp.unlink(missing_ok=True)
+    except Exception as e:
+        logger.warning("Normalize sound %s failed: %s", path.name, e)
+        tmp.unlink(missing_ok=True)
+    return False
+
+
+def _normalize_all_sounds():
+    """Normalize all sound files across bundled and media directories.
+
+    Scans both the bundled sounds dir and /media/station_assistant/ for
+    files that aren't 44.1kHz and re-encodes them. This handles:
+    - Bundled sounds on first install
+    - Files uploaded via HA Media Browser (not through our UI)
+    """
+    count = 0
+    for search_dir in [BASE_DIR / "sounds", Path("/media/station_assistant")]:
+        if not search_dir.exists():
+            continue
+        for mp3 in list(search_dir.glob("*.mp3")):
+            if _normalize_sound_file(mp3):
+                count += 1
+
+    if count > 0:
+        logger.info("Normalized %d sound file(s) to 44.1kHz/mono/128k", count)
+        # Mirror bundled sounds to /media/ and /config/www/
+        sounds_dir = BASE_DIR / "sounds"
+        for dst_dir in [
+            Path("/config/www/station_assistant/sounds"),
+            Path("/media/station_assistant"),
+        ]:
+            try:
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                for mp3 in sounds_dir.glob("*.mp3"):
+                    if not mp3.name.startswith("_"):
+                        shutil.copy2(mp3, dst_dir / mp3.name)
+            except Exception as e:
+                logger.warning("Mirror sounds to %s failed: %s", dst_dir, e)
+
+
 def startup():
     logger.info("═══════════════════════════════════════")
     logger.info("  Station Assistant  v%s", APP_VERSION)
@@ -1308,6 +1419,11 @@ def startup():
     # Init SQLite detection log
     dl.init_db()
     logger.info("Detection log database ready")
+
+    # Normalize all sound files to 44.1kHz/mono/128k.
+    # This ensures stream-copy concatenation always works at alert time.
+    # Also catches files uploaded via HA Media Browser.
+    _normalize_all_sounds()
 
     # Start decoder if already configured
     if SAConfig.is_setup_complete():

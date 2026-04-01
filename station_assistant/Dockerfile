@@ -22,7 +22,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # ── Application files ──────────────────────────────────────────────────────────
 # CACHEBUST: update the date below to force a clean re-copy on every rebuild
-RUN echo "build-2026-04-01r" > /build_info
+RUN echo "build-2026-04-01s" > /build_info
 COPY rootfs/ /
 
 # ── Permissions ────────────────────────────────────────────────────────────────
@@ -34,4 +34,4 @@ LABEL \
     io.hass.description="Fire station alerting with two-tone decoder and alert dashboard" \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
-    io.hass.version="2.0.0"
+    io.hass.version="2.1.0"

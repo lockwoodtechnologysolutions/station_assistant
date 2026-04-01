@@ -6,7 +6,7 @@ Avoids magic numbers scattered across the codebase.
 
 # ── Application ──────────────────────────────────────────────────────────────
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 MAX_SEQUENCES = 5
 
 # ── Decoder / Goertzel ───────────────────────────────────────────────────────
