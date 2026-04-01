@@ -435,6 +435,10 @@ class StackManager:
             "Line In relay: streaming %s → %s for %.0fs",
             stream_url, entities, duration,
         )
+        # Stop current playback cleanly before starting the stream.
+        # Prevents players from briefly restarting the alert MP3.
+        ha.stop_media(entities)
+        time.sleep(0.2)
         ha.play_url(entities, stream_url)
 
         # Notify UI that relay started
