@@ -39,15 +39,26 @@ class LiveTranscoder:
         self._lock = threading.Lock()
         self._subscribers: list[queue.Queue] = []
         self._sub_lock = threading.Lock()
+        # Ring buffer: keep last ~3 seconds of MP3 data so new subscribers
+        # immediately get audio instead of waiting for ffmpeg to produce more.
+        # At 128kbps, 3 seconds ≈ 48KB ≈ 12 chunks of 4096 bytes.
+        self._backlog: list[bytes] = []
+        self._backlog_max = 15  # ~3-4 seconds of MP3 at 128kbps
 
     @property
     def running(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
 
     def subscribe(self) -> queue.Queue:
-        """Add a per-client consumer queue."""
+        """Add a per-client consumer queue, pre-filled with recent audio."""
         q: queue.Queue = queue.Queue(maxsize=TRANSCODER_QUEUE_MAXSIZE)
         with self._sub_lock:
+            # Pre-fill with buffered data so the client gets audio immediately
+            for chunk in self._backlog:
+                try:
+                    q.put_nowait(chunk)
+                except queue.Full:
+                    break
             self._subscribers.append(q)
         return q
 
@@ -59,8 +70,13 @@ class LiveTranscoder:
                 pass
 
     def _publish(self, data: bytes) -> None:
-        """Copy MP3 data to every subscriber queue."""
+        """Copy MP3 data to every subscriber queue and maintain backlog."""
         with self._sub_lock:
+            # Maintain ring buffer of recent MP3 data
+            self._backlog.append(data)
+            if len(self._backlog) > self._backlog_max:
+                self._backlog.pop(0)
+
             dead = []
             for q in self._subscribers:
                 try:
@@ -164,4 +180,5 @@ class LiveTranscoder:
             self._proc = None
         with self._sub_lock:
             self._subscribers.clear()
+            self._backlog.clear()
         logger.info("Live transcoder stopped")
