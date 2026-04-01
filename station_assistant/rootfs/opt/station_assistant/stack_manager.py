@@ -432,9 +432,12 @@ class StackManager:
 
         # Clear stale audio from the transcoder buffer (captured during
         # alert sound playback) so media players get fresh live audio.
+        # Wait briefly after clearing to let any remaining stale chunks drain.
         if self._clear_backlog_cb:
             try:
                 self._clear_backlog_cb()
+                time.sleep(0.5)
+                self._clear_backlog_cb()  # clear again after drain
             except Exception:
                 pass
 
