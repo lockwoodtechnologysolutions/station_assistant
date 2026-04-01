@@ -648,6 +648,7 @@ let mediaPlayers = [];
 let selectedPlayers = [];   // current modal's chosen entity IDs
 let levelInterval = null;
 let peakInterval  = null;
+let statusInterval = null;
 let _peakHoldTimer = null;
 let gainSaveTimer = null;
 let sseSource     = null;  // EventSource for live goertzel updates
@@ -729,6 +730,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab !== 'monitor' && peakInterval) {
       clearInterval(peakInterval);
       peakInterval = null;
+    }
+    if (tab !== 'monitor' && statusInterval) {
+      clearInterval(statusInterval);
+      statusInterval = null;
     }
     if (tab !== 'monitor' && sseSource) {
       sseSource.close();
@@ -1100,6 +1105,7 @@ async function startMonitor() {
   initCanvas();
   levelInterval = setInterval(pollLevel, 500);
   peakInterval  = setInterval(pollPeak,  500);
+  statusInterval = setInterval(loadDeviceInfo, 5000);
   loadGain();
   loadDeviceInfo();
 
