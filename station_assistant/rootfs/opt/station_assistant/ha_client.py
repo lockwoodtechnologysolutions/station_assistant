@@ -296,24 +296,37 @@ def concatenate_sounds(filenames: list[str]) -> Optional[str]:
                 safe = str(p).replace("'", "'\\''")
                 f.write(f"file '{safe}'\n")
 
-        # Use ffmpeg to merge files, always re-encoding to a uniform sample
-        # rate.  Stream-copy (-c copy) would be faster but silently produces
-        # broken output when files have different sample rates — LinkPlay
-        # devices read the rate from the first frame and apply it to all
-        # subsequent frames, causing a chipmunk effect.
+        # Try stream copy first (instant, no re-encoding).
+        # Falls back to re-encode if stream copy produces broken output
+        # (e.g. files with different sample rates causing chipmunk effect).
         result = subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-f", "concat",
                 "-safe", "0",
                 "-i", str(concat_list),
-                "-ar", "44100",         # normalize sample rate
-                "-ac", "1",             # mono
-                "-b:a", "128k",         # constant bitrate
+                "-c", "copy",
                 str(out_path),
             ],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=10,
         )
+
+        if result.returncode != 0:
+            # Stream copy failed — re-encode to normalize sample rates
+            logger.debug("concatenate_sounds: stream copy failed, re-encoding")
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-f", "concat",
+                    "-safe", "0",
+                    "-i", str(concat_list),
+                    "-ar", "44100",
+                    "-ac", "1",
+                    "-b:a", "128k",
+                    str(out_path),
+                ],
+                capture_output=True, text=True, timeout=60,
+            )
 
         if result.returncode != 0:
             logger.error(
