@@ -46,7 +46,6 @@ class StackManager:
         self._idle_cb:  Optional[Callable] = None
         self._prewarm_cb: Optional[Callable] = None
         self._relay_done_cb: Optional[Callable] = None
-        self._clear_backlog_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -90,9 +89,6 @@ class StackManager:
         """Register function called when the Line In relay finishes."""
         self._relay_done_cb = fn
 
-    def set_clear_backlog_callback(self, fn: Callable) -> None:
-        """Register function to clear the transcoder's audio backlog."""
-        self._clear_backlog_cb = fn
 
     def on_tone_detected(self, seq: dict, confidence: float) -> None:
         """
@@ -429,17 +425,6 @@ class StackManager:
             return
 
         stream_url = ha.get_addon_stream_url() + "/api/audio/live"
-
-        # Clear stale audio from the transcoder buffer (captured during
-        # alert sound playback) so media players get fresh live audio.
-        # Wait briefly after clearing to let any remaining stale chunks drain.
-        if self._clear_backlog_cb:
-            try:
-                self._clear_backlog_cb()
-                time.sleep(0.5)
-                self._clear_backlog_cb()  # clear again after drain
-            except Exception:
-                pass
 
         self._line_in_stop.clear()
         self._streaming_entities = list(entities)
