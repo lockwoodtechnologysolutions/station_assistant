@@ -430,8 +430,9 @@ def api_activate():
         try:
             for dst in (sounds_dst_www, sounds_dst_media):
                 dst.mkdir(parents=True, exist_ok=True)
-                for mp3 in sounds_src.glob("*.mp3"):
-                    shutil.copy2(mp3, dst / mp3.name)
+                for snd in sounds_src.iterdir():
+                    if snd.suffix.lower() in (".mp3", ".wav"):
+                        shutil.copy2(snd, dst / snd.name)
             logger.info("Copied sounds to %s and %s", sounds_dst_www, sounds_dst_media)
         except Exception as e:
             logger.warning("Could not copy all sounds: %s", e)
@@ -1380,14 +1381,36 @@ def _normalize_all_sounds():
     """Normalize all sound files across bundled and media directories.
 
     Scans both the bundled sounds dir and /media/station_assistant/ for
-    files that aren't 44.1kHz and re-encodes them. This handles:
-    - Bundled sounds on first install
+    files that aren't 44.1kHz MP3 and re-encodes them. Also converts
+    WAV files to normalized MP3. This handles:
+    - Bundled sounds on first install (including WAV files)
     - Files uploaded via HA Media Browser (not through our UI)
     """
     count = 0
     for search_dir in [BASE_DIR / "sounds", Path("/media/station_assistant")]:
         if not search_dir.exists():
             continue
+        # Convert WAV files to MP3
+        for wav in list(search_dir.glob("*.wav")):
+            if wav.name.startswith("_"):
+                continue
+            mp3_path = wav.with_suffix(".mp3")
+            try:
+                result = subprocess.run(
+                    [
+                        "ffmpeg", "-y", "-i", str(wav),
+                        "-ar", "44100", "-ac", "1", "-b:a", "128k",
+                        str(mp3_path),
+                    ],
+                    capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode == 0:
+                    wav.unlink()  # remove original WAV
+                    count += 1
+                    logger.info("Converted WAV to MP3: %s", mp3_path.name)
+            except Exception as e:
+                logger.warning("WAV conversion failed for %s: %s", wav.name, e)
+        # Normalize existing MP3 files
         for mp3 in list(search_dir.glob("*.mp3")):
             if _normalize_sound_file(mp3):
                 count += 1
