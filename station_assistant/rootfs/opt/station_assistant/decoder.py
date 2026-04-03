@@ -80,13 +80,16 @@ class AudioStreamBus:
     def publish(self, pcm_bytes: bytes) -> None:
         with self._lock:
             dead: list[queue.Queue] = []
-            for q in self._subscribers:
+            for q in list(self._subscribers):  # copy to avoid mutation during iteration
                 try:
                     q.put_nowait(pcm_bytes)
                 except queue.Full:
                     dead.append(q)
             for q in dead:
-                self._subscribers.remove(q)
+                try:
+                    self._subscribers.remove(q)
+                except ValueError:
+                    pass
 
     @property
     def has_subscribers(self) -> bool:
@@ -514,8 +517,11 @@ class DecoderService:
         audio_queue: queue.Queue = queue.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
 
         def audio_callback(in_data, frame_count, time_info, status):
-            if not audio_queue.full():
-                audio_queue.put_nowait(in_data)
+            try:
+                if not audio_queue.full():
+                    audio_queue.put_nowait(in_data)
+            except Exception:
+                pass  # never crash the audio callback
             return (None, pyaudio.paContinue)
 
         pa = pyaudio.PyAudio()
@@ -552,14 +558,19 @@ class DecoderService:
                 except queue.Empty:
                     continue
 
-                samples = np.frombuffer(raw, dtype=np.float32)
-                self._process_chunk(samples, sample_rate)
+                try:
+                    samples = np.frombuffer(raw, dtype=np.float32)
+                    self._process_chunk(samples, sample_rate)
+                except Exception as e:
+                    logger.exception("Error processing audio chunk: %s", e)
+                    continue
 
                 # Periodic log purge
                 now = time.time()
                 if now - last_purge > PURGE_INTERVAL:
                     opts = get_options()
-                    purge_old_records(opts["log_retention_days"])
+                    purge_days = max(1, min(365, int(opts.get("log_retention_days", 30))))
+                    purge_old_records(purge_days)
                     last_purge = now
 
                 # Watchdog heartbeat → sensor.station_assistant_watchdog

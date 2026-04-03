@@ -1204,12 +1204,18 @@ def api_audio_monitor():
             decoder.stream_bus.unsubscribe(sub_q)
             try:
                 proc.terminate()
-                proc.wait(timeout=3)
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1)
             except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
+                pass
+            finally:
+                if proc.poll() is None:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
 
     return app.response_class(
         generate(),

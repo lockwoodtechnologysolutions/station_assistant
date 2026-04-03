@@ -135,6 +135,7 @@ def purge_old_records(retention_days: int) -> int:
             count = cursor.rowcount
             conn.commit()
             if count:
+                conn.execute("VACUUM")  # reclaim disk space
                 logger.info("Purged %d old detection records", count)
             return count
         except sqlite3.Error as e:
@@ -142,12 +143,3 @@ def purge_old_records(retention_days: int) -> int:
             return 0
 
 
-def get_detection_count() -> int:
-    """Return total number of stored detections."""
-    with _lock:
-        try:
-            conn = _get_conn()
-            count = conn.execute("SELECT COUNT(*) FROM detections").fetchone()[0]
-            return count
-        except sqlite3.Error as e:
-            return 0
