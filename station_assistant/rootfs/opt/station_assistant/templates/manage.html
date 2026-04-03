@@ -355,49 +355,53 @@
 
     <div class="settings-card">
       <h3>Station</h3>
-      <div class="form-row">
-        <label>Department Name</label>
-        <input id="s-dept" type="text" placeholder="Riverside Fire Department">
-      </div>
-      <div class="form-row">
-        <label>Station Name</label>
-        <input id="s-station" type="text" placeholder="Station 1">
-      </div>
-      <div class="form-row">
-        <label>Weather Entity</label>
-        <div style="display:flex;align-items:center;gap:12px">
-          <select id="s-weather" style="flex:1;min-width:0"></select>
-          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;color:var(--text2);cursor:pointer;flex-shrink:0">
-            <input type="checkbox" id="s-show-weather" style="width:14px;height:14px;accent-color:var(--accent2)" checked>
-            Show on Dashboard
-          </label>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Department Name</label>
+          <input id="s-dept" type="text" placeholder="Riverside Fire Department">
         </div>
-      </div>
-      <div class="form-row">
-        <label>Department Logo</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <label class="btn btn-secondary btn-sm" style="cursor:pointer">
-            📁 Upload
-            <input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">
-          </label>
-          <span id="logo-status" style="font-size:12px;color:var(--text2)"></span>
+        <div class="form-row">
+          <label>Station Name</label>
+          <input id="s-station" type="text" placeholder="Station 1">
+        </div>
+        <div class="form-row">
+          <label>Weather Entity</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <select id="s-weather" style="flex:1;min-width:0"></select>
+            <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;color:var(--text2);cursor:pointer;flex-shrink:0">
+              <input type="checkbox" id="s-show-weather" style="width:14px;height:14px;accent-color:var(--accent2)" checked>
+              Show
+            </label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Department Logo</label>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+              Upload
+              <input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">
+            </label>
+            <span id="logo-status" style="font-size:12px;color:var(--text2)"></span>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="settings-card">
       <h3>Audio &amp; Connection</h3>
-      <div class="form-row">
-        <label>Input Device</label>
-        <select id="s-audio-device"></select>
-        <div class="form-hint">USB audio adapter line-in. Save to restart the decoder.</div>
-      </div>
-      <div class="form-row" style="margin-top:4px">
-        <label>Home Assistant</label>
-        <div id="ha-status-detail" style="font-size:13px;color:var(--text2);margin-bottom:6px">Checking…</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-secondary btn-sm" onclick="checkHaStatus()">🔍 Re-check</button>
-          <code id="dash-url-display" style="font-size:11px;color:var(--text2)">http://&lt;HA-IP&gt;:8099/dashboard</code>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Input Device</label>
+          <select id="s-audio-device"></select>
+          <div class="form-hint">USB audio adapter line-in. Save to restart decoder.</div>
+        </div>
+        <div class="form-row">
+          <label>Home Assistant</label>
+          <div id="ha-status-detail" style="font-size:13px;color:var(--text2);margin-bottom:4px">Checking…</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-secondary btn-sm" onclick="checkHaStatus()">Re-check</button>
+            <code id="dash-url-display" style="font-size:11px;color:var(--text2)">:8099/dashboard</code>
+          </div>
         </div>
       </div>
     </div>
@@ -408,29 +412,26 @@
         <div class="form-row">
           <label>Page Sequence Gap</label>
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" id="s-gap" min="1" max="10" step="0.5"
-                   style="width:70px;flex-shrink:0">
+            <input type="number" id="s-gap" min="1" max="10" step="0.5" style="width:70px">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Wait after last decoded tone before audio plays.</div>
+          <div class="form-hint">Wait after last tone before audio plays.</div>
         </div>
         <div class="form-row">
           <label>Multi-Unit Stack Window</label>
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" id="s-stack" min="5" max="600" step="0.5"
-                   style="width:70px;flex-shrink:0">
+            <input type="number" id="s-stack" min="5" max="600" step="0.5" style="width:70px">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Hold the incident open for additional units.</div>
+          <div class="form-hint">Hold incident open for additional units.</div>
         </div>
         <div class="form-row">
           <label>Duplicate Cooldown</label>
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5"
-                   style="width:70px;flex-shrink:0">
+            <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5" style="width:70px">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Suppress repeat detections. 0 to disable.</div>
+          <div class="form-hint">Suppress repeats. 0 to disable.</div>
         </div>
       </div>
       <div class="form-grid-2" style="margin-top:12px">
@@ -442,13 +443,13 @@
             </select>
             <button class="btn btn-icon btn-sm" onclick="playPreview($('s-multi-sound').value)" title="Preview">&#9654;</button>
           </div>
-          <div class="form-hint">Shared ramp-up for multi-unit dispatches. None = each unit plays its own.</div>
+          <div class="form-hint">Shared ramp-up for 2+ unit dispatches. None = each unit plays its own.</div>
         </div>
         <div class="form-row">
           <label>Multi-Unit Stack Color</label>
-          <div style="display:flex;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
             <input type="color" id="s-multi-color" value="#1a4a8b"
-                   style="width:50px;height:34px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
+                   style="width:44px;height:32px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
             <span style="font-size:12px;color:var(--text2)">Dashboard color for 2+ unit dispatches</span>
           </div>
         </div>
@@ -457,17 +458,17 @@
 
     <div class="settings-card">
       <h3>Alert Boards</h3>
-      <div class="form-grid-2">
-        <div class="form-row">
-          <label>Alert Board Timeout</label>
-          <select id="s-return">
+      <div class="form-row">
+        <label>Alert Board Timeout</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <select id="s-return" style="width:auto">
             <option value="30">30 seconds</option>
             <option value="45">45 seconds</option>
             <option value="60">60 seconds</option>
             <option value="90">90 seconds</option>
             <option value="120">2 minutes</option>
           </select>
-          <div class="form-hint">How long the alert board stays up after the stack window closes.</div>
+          <span style="font-size:12px;color:var(--text2)">before returning to idle</span>
         </div>
       </div>
     </div>
@@ -486,28 +487,28 @@
             <option value="180">3 minutes</option>
             <option value="300">5 minutes</option>
           </select>
-          <div class="form-hint">After alert sounds finish, relay incoming Line In audio to media players so personnel can hear the dispatch voice message.</div>
+          <div class="form-hint">Relay Line In audio to media players after alert sounds.</div>
         </div>
         <div class="form-row">
           <label>Stream Base URL</label>
           <input type="text" id="s-stream-url" placeholder="http://your-ha-ip:8099">
-          <div class="form-hint">The URL media players use to reach this addon for Line In audio. Set to your HA host IP + port 8099. Leave blank for auto-detect.</div>
+          <div class="form-hint">HA host IP + port 8099. Blank for auto-detect.</div>
         </div>
-        <div class="form-row">
-          <label>Live PA Volume Boost</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="s-live-pa-gain" min="-20" max="40" step="1" value="0"
-                   style="flex:1;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'">
-            <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:52px;text-align:right">0 dB</span>
-          </div>
-          <div class="form-hint">Adjust Live PA stream volume. Negative values reduce, positive values boost. 0 = no change.</div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label>Live PA Volume</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="range" id="s-live-pa-gain" min="-20" max="40" step="1" value="0"
+                 style="flex:1;max-width:300px;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'">
+          <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:52px;text-align:right">0 dB</span>
         </div>
+        <div class="form-hint">Adjust stream volume. Negative = reduce, positive = boost.</div>
       </div>
     </div>
 
     <div class="settings-card danger-zone">
       <h3>Danger Zone</h3>
-      <p class="settings-note">Resets Station Assistant config and returns to the setup wizard. HA automations and sequences are <strong>not</strong> deleted.</p>
+      <p class="settings-note">Resets config and returns to the setup wizard. HA automations and sequences are <strong>not</strong> deleted.</p>
       <button class="btn btn-danger" onclick="confirmReset()">&#9888; Reset Setup Wizard</button>
     </div>
 
