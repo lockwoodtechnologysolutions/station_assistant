@@ -402,59 +402,55 @@
       </div>
     </div>
 
-    <div class="settings-card settings-card-tall">
+    <div class="settings-card">
       <h3>Stack Page Configuration</h3>
       <div class="form-grid-3">
         <div class="form-row">
           <label>Page Sequence Gap</label>
           <div style="display:flex;align-items:center;gap:8px">
             <input type="number" id="s-gap" min="1" max="10" step="0.5"
-                   style="width:80px;flex-shrink:0">
+                   style="width:70px;flex-shrink:0">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Wait after the last decoded tone before audio plays (default: 3s).</div>
+          <div class="form-hint">Wait after last decoded tone before audio plays.</div>
         </div>
         <div class="form-row">
           <label>Multi-Unit Stack Window</label>
           <div style="display:flex;align-items:center;gap:8px">
             <input type="number" id="s-stack" min="5" max="600" step="0.5"
-                   style="width:80px;flex-shrink:0">
+                   style="width:70px;flex-shrink:0">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">After the first tone, hold the incident open this long for additional units (default: 60s).</div>
+          <div class="form-hint">Hold the incident open for additional units.</div>
         </div>
         <div class="form-row">
           <label>Duplicate Cooldown</label>
           <div style="display:flex;align-items:center;gap:8px">
             <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5"
-                   style="width:80px;flex-shrink:0">
+                   style="width:70px;flex-shrink:0">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Repeat detections of the same sequence within this window are silently ignored. 0 to disable.</div>
+          <div class="form-hint">Suppress repeat detections. 0 to disable.</div>
         </div>
       </div>
-      <div class="form-row" style="margin-top:4px">
-        <label>Multi-Unit Ramp Sound</label>
-        <div style="display:flex;gap:8px;align-items:center">
-          <select id="s-multi-sound" style="flex:1">
-            <option value="">None</option>
-          </select>
-          <button class="btn btn-icon btn-sm" onclick="playPreview($('s-multi-sound').value)" title="Preview sound">&#9654;</button>
-          <label class="btn btn-secondary btn-sm"
-                 style="cursor:pointer;white-space:nowrap;margin:0;flex-shrink:0">
-            &uarr; Upload
-            <input type="file" accept="audio/mpeg,.mp3" style="display:none"
-                   onchange="uploadMultiUnitSound(this)">
-          </label>
+      <div class="form-grid-2" style="margin-top:12px">
+        <div class="form-row">
+          <label>Multi-Unit Ramp Sound</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="s-multi-sound" style="flex:1;min-width:0">
+              <option value="">None</option>
+            </select>
+            <button class="btn btn-icon btn-sm" onclick="playPreview($('s-multi-sound').value)" title="Preview">&#9654;</button>
+          </div>
+          <div class="form-hint">Shared ramp-up for multi-unit dispatches. None = each unit plays its own.</div>
         </div>
-        <div class="form-hint">When set to None, each unit's individual Ramp Up tone (Sound 1) is played. Select a sound here to play a single shared ramp-up tone for all units in a multi-unit dispatch.</div>
-      </div>
-      <div class="form-row">
-        <label>Multi-Unit Stack Color</label>
-        <div style="display:flex;align-items:center;gap:12px">
-          <input type="color" id="s-multi-color" value="#1a4a8b"
-                 style="width:50px;height:34px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
-          <span style="font-size:12px;color:var(--text2)">Alert Dashboard border &amp; card color when 2+ units are dispatched together</span>
+        <div class="form-row">
+          <label>Multi-Unit Stack Color</label>
+          <div style="display:flex;align-items:center;gap:12px">
+            <input type="color" id="s-multi-color" value="#1a4a8b"
+                   style="width:50px;height:34px;padding:2px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--surface)">
+            <span style="font-size:12px;color:var(--text2)">Dashboard color for 2+ unit dispatches</span>
+          </div>
         </div>
       </div>
     </div>
