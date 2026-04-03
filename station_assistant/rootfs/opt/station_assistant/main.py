@@ -700,7 +700,7 @@ def api_settings_save():
             new_cfg["dashboard_audio"] = bool(data["dashboard_audio"])
         if "live_pa_gain" in data:
             try:
-                new_cfg["live_pa_gain"] = max(0, min(40, int(data["live_pa_gain"])))
+                new_cfg["live_pa_gain"] = max(-20, min(40, int(data["live_pa_gain"])))
             except (ValueError, TypeError):
                 new_cfg["live_pa_gain"] = 6
         sa_config.save(new_cfg)
@@ -1134,7 +1134,7 @@ def api_audio_monitor():
         "-f", "s16le", "-ar", str(sr), "-ac", "1",
         "-i", "pipe:0",
     ]
-    if gain_db > 0:
+    if gain_db != 0:
         cmd += ["-af", f"volume={gain_db}dB"]
     cmd += ["-b:a", "96k", "-f", "mp3", "pipe:1"]
 

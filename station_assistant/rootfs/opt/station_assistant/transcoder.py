@@ -101,9 +101,9 @@ class LiveTranscoder:
             "-f", "s16le", "-ar", str(sr), "-ac", "1",
             "-i", "pipe:0",
         ]
-        if gain_db > 0:
+        if gain_db != 0:
             cmd += ["-af", f"volume={gain_db}dB"]
-            logger.info("Live transcoder: volume boost +%ddB", gain_db)
+            logger.info("Live transcoder: volume %+ddB", gain_db)
         cmd += ["-b:a", MP3_BITRATE, "-f", "mp3", "pipe:1"]
 
         self._proc = subprocess.Popen(

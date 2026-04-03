@@ -500,11 +500,11 @@
         <div class="form-row">
           <label>Live PA Volume Boost</label>
           <div style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="s-live-pa-gain" min="0" max="40" step="1" value="12"
-                   style="flex:1;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = this.value + ' dB'">
-            <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:44px;text-align:right">6 dB</span>
+            <input type="range" id="s-live-pa-gain" min="-20" max="40" step="1" value="0"
+                   style="flex:1;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'">
+            <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:52px;text-align:right">0 dB</span>
           </div>
-          <div class="form-hint">Boost the Live PA stream volume to match alert sound levels. 0 = no boost, 12 = default, 40 = maximum. Increase if dispatch audio is too quiet.</div>
+          <div class="form-hint">Adjust Live PA stream volume. Negative values reduce, positive values boost. 0 = no change.</div>
         </div>
       </div>
     </div>
@@ -1521,7 +1521,7 @@ async function loadSettings() {
     $('s-stream-url').value    = cfg.stream_base_url || '';
     const paGain = cfg.live_pa_gain ?? 6;
     $('s-live-pa-gain').value = paGain;
-    $('s-live-pa-gain-val').textContent = paGain + ' dB';
+    $('s-live-pa-gain-val').textContent = (paGain > 0 ? '+' : '') + paGain + ' dB';
     // Multi-unit ramp-up sound selector
     const sndData = await api('GET', '/api/setup/sounds');
     const musel   = $('s-multi-sound');
@@ -1572,7 +1572,7 @@ async function saveSettings() {
       dupe_cooldown:     parseFloat($('s-dupe-cooldown').value) || 0,
       line_in_duration:  parseFloat($('s-line-in-dur').value) || 0,
       stream_base_url:   ($('s-stream-url').value || '').trim(),
-      live_pa_gain:      parseInt($('s-live-pa-gain').value) || 6,
+      live_pa_gain:      parseInt($('s-live-pa-gain').value) || 0,
       multi_unit_sound:  $('s-multi-sound').value,
       multi_unit_color:  $('s-multi-color').value,
       audio_device:      parseInt($('s-audio-device').value),
