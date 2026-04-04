@@ -477,7 +477,7 @@
       <h3>Dispatch Audio</h3>
       <div class="form-grid-2">
         <div class="form-row">
-          <label>Recording Duration</label>
+          <label>Relay Duration</label>
           <select id="s-line-in-dur">
             <option value="0">Disabled</option>
             <option value="30">30 seconds</option>
@@ -487,17 +487,22 @@
             <option value="180">3 minutes</option>
             <option value="300">5 minutes</option>
           </select>
-          <div class="form-hint">Record dispatcher audio after paging tones, then play to PA zones.</div>
+          <div class="form-hint">Stream Line In audio to PA zones after alert sounds. For best results, dispatchers should pause 3-5 seconds after tones before speaking.</div>
         </div>
         <div class="form-row">
-          <label>Volume Adjustment</label>
-          <div style="display:flex;align-items:center;gap:8px">
-            <input type="range" id="s-live-pa-gain" min="-20" max="40" step="1" value="0"
-                   style="flex:1;max-width:300px;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'">
-            <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:52px;text-align:right">0 dB</span>
-          </div>
-          <div class="form-hint">Adjust recorded audio volume. Negative = reduce, positive = boost.</div>
+          <label>Stream Base URL</label>
+          <input type="text" id="s-stream-url" placeholder="http://your-ha-ip:8099">
+          <div class="form-hint">HA host IP + port 8099. Blank for auto-detect.</div>
         </div>
+      </div>
+      <div class="form-row" style="margin-top:8px">
+        <label>Volume Adjustment</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="range" id="s-live-pa-gain" min="-20" max="40" step="1" value="0"
+                 style="flex:1;max-width:300px;accent-color:var(--accent)" oninput="$('s-live-pa-gain-val').textContent = (this.value > 0 ? '+' : '') + this.value + ' dB'">
+          <span id="s-live-pa-gain-val" style="font-family:var(--mono);font-size:13px;width:52px;text-align:right">0 dB</span>
+        </div>
+        <div class="form-hint">Adjust stream volume. Negative = reduce, positive = boost.</div>
       </div>
     </div>
 

@@ -46,8 +46,6 @@ class StackManager:
         self._idle_cb:  Optional[Callable] = None
         self._prewarm_cb: Optional[Callable] = None
         self._relay_done_cb: Optional[Callable] = None
-        self._start_recording_cb: Optional[Callable] = None
-        self._stop_recording_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -91,10 +89,6 @@ class StackManager:
         """Register function called when the Line In relay finishes."""
         self._relay_done_cb = fn
 
-    def set_recording_callbacks(self, start_fn: Callable, stop_fn: Callable) -> None:
-        """Register functions to start/stop voice buffer recording."""
-        self._start_recording_cb = start_fn
-        self._stop_recording_cb = stop_fn
 
 
     def on_tone_detected(self, seq: dict, confidence: float) -> None:
@@ -335,18 +329,6 @@ class StackManager:
         hear the dispatch voice message.
         """
         all_entities: list = []
-
-        # Start voice buffer recording — captures dispatch voice during
-        # alert sound playback so nothing is lost. Only if Live PA is enabled.
-        voice_buffer_active = False
-        cfg = self.sa_config.load()
-        if float(cfg.get("line_in_duration", 0)) > 0 and self._start_recording_cb:
-            try:
-                self._start_recording_cb("/media/station_assistant/_voice_buffer.mp3")
-                voice_buffer_active = True
-            except Exception as e:
-                logger.warning("Voice buffer start failed: %s", e)
-
         try:
             if is_multi:
                 entities = []
@@ -405,11 +387,9 @@ class StackManager:
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
 
-        # ── Dispatch audio recording & playback ────────────────────────────
-        # Recording started during alert sounds (if enabled).
-        # Continue recording for the configured duration, then stop and play.
+        # ── Dispatch audio relay ──────────────────────────────────────────
         if all_entities:
-            self._dispatch_audio(all_entities, voice_buffer_active)
+            self._relay_dispatch_audio(all_entities)
 
     def _play_combined(self, players: list, sounds: list[str]) -> bool:
         """Concatenate sounds into one file, play it, and wait."""
@@ -430,100 +410,63 @@ class StackManager:
                            known_duration=duration)
         return True
 
-    def _dispatch_audio(self, entities: list, recording_active: bool) -> None:
-        """Record dispatch audio and play it back on station PA zones.
+    def _relay_dispatch_audio(self, entities: list) -> None:
+        """Stream live dispatch audio to media players after alert sounds.
 
-        If recording is active (started during alert sounds), continues
-        recording for the configured duration. When done, stops recording
-        and plays the complete file to the media players.
+        Reads ``line_in_duration`` from sa_config. A value of 0 disables
+        the relay. Streams the Line In audio in real-time via the
+        Live transcoder so personnel can hear the dispatcher's voice.
 
-        Timeline:
-          Alert sounds play (recording captures dispatch voice) →
-          Alert sounds finish →
-          Continue recording for configured duration →
-          Stop recording →
-          Play complete recording to PA zones
-
-        The recording file contains ALL dispatch audio from the moment
-        the gap timer fired — nothing is lost.
+        Note: dispatch audio that occurs during alert sound playback is
+        not captured. For best results, dispatchers should pause 3-5
+        seconds after paging tones before beginning voice dispatch.
         """
-        from pathlib import Path
-
         cfg = self.sa_config.load()
-        record_duration = float(cfg.get("line_in_duration", 0))
-        if record_duration <= 0 or not recording_active:
-            # Not recording — stop transcoder and return
-            if self._stop_recording_cb:
-                try:
-                    self._stop_recording_cb()
-                except Exception:
-                    pass
-            if self._relay_done_cb:
-                try:
-                    self._relay_done_cb()
-                except Exception:
-                    pass
+        duration = float(cfg.get("line_in_duration", 0))
+        if duration <= 0:
             return
+
+        stream_url = ha.get_addon_stream_url() + "/api/audio/live"
 
         self._line_in_stop.clear()
         self._streaming_entities = list(entities)
         self._relay_start_time = time.time()
-        self._relay_duration = record_duration
+        self._relay_duration = duration
+
+        logger.info(
+            "Dispatch audio: streaming %s → %s for %.0fs",
+            stream_url, entities, duration,
+        )
+        ha.stop_media(entities)
+        time.sleep(0.2)
+        ha.play_url(entities, stream_url)
 
         # Notify UI
         if self._alert_cb:
             try:
                 self._alert_cb({
                     "event": "relay_start",
-                    "duration": record_duration,
+                    "duration": duration,
                 })
             except Exception:
                 pass
 
-        logger.info("Dispatch audio: recording for %.0fs", record_duration)
-
-        # Continue recording for the configured duration
+        # Wait for the configured duration
         waited = 0.0
-        while waited < record_duration:
+        while waited < duration:
             if self._line_in_stop.is_set():
-                logger.info("Dispatch audio: recording stopped early")
+                logger.info("Dispatch audio: stopped early")
                 break
-            step = min(0.5, record_duration - waited)
+            step = min(0.5, duration - waited)
             time.sleep(step)
             waited += step
 
-        # Stop recording
-        if self._stop_recording_cb:
-            try:
-                self._stop_recording_cb()
-            except Exception:
-                pass
-
-        logger.info("Dispatch audio: recording complete (%.0fs)", waited)
-
-        # Play the recorded dispatch audio
-        vb = Path("/media/station_assistant/_voice_buffer.mp3")
-        if vb.exists() and vb.stat().st_size > 1000:
-            full_duration = ha.get_sound_duration("_voice_buffer.mp3")
-            if full_duration and full_duration > 0.5:
-                logger.info(
-                    "Dispatch audio: playing %.1fs recording → %s",
-                    full_duration, entities,
-                )
-                ha.stop_media(entities)
-                time.sleep(0.2)
-                ha.play_sound(entities, "_voice_buffer.mp3")
-                ha.wait_until_idle(
-                    entities[0] if isinstance(entities, list) else entities,
-                    known_duration=full_duration,
-                )
-
-        # Cleanup
+        # Stop playback
         ha.stop_media(entities)
         self._streaming_entities = []
         self._relay_start_time = 0.0
         self._relay_duration = 0.0
-        logger.info("Dispatch audio: complete")
+        logger.info("Dispatch audio: finished (%.0fs)", waited)
 
         # Notify UI
         if self._alert_cb:
