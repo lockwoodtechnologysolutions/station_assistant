@@ -46,6 +46,8 @@ class StackManager:
         self._idle_cb:  Optional[Callable] = None
         self._prewarm_cb: Optional[Callable] = None
         self._relay_done_cb: Optional[Callable] = None
+        self._start_recording_cb: Optional[Callable] = None
+        self._stop_recording_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -88,6 +90,11 @@ class StackManager:
     def set_relay_done_callback(self, fn: Callable) -> None:
         """Register function called when the Line In relay finishes."""
         self._relay_done_cb = fn
+
+    def set_recording_callbacks(self, start_fn: Callable, stop_fn: Callable) -> None:
+        """Register functions to start/stop voice buffer recording."""
+        self._start_recording_cb = start_fn
+        self._stop_recording_cb = stop_fn
 
 
     def on_tone_detected(self, seq: dict, confidence: float) -> None:
@@ -328,6 +335,18 @@ class StackManager:
         hear the dispatch voice message.
         """
         all_entities: list = []
+
+        # Start voice buffer recording — captures dispatch voice during
+        # alert sound playback so nothing is lost. Only if Live PA is enabled.
+        voice_buffer_active = False
+        cfg = self.sa_config.load()
+        if float(cfg.get("line_in_duration", 0)) > 0 and self._start_recording_cb:
+            try:
+                self._start_recording_cb("/media/station_assistant/_voice_buffer.mp3")
+                voice_buffer_active = True
+            except Exception as e:
+                logger.warning("Voice buffer start failed: %s", e)
+
         try:
             if is_multi:
                 entities = []
@@ -385,13 +404,17 @@ class StackManager:
 
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
-        # Don't clean up _combined_alert.mp3 here — the Alert Dashboard
-        # browser may still be fetching it. It gets overwritten on the
-        # next alert anyway.
+
+        # Stop voice buffer recording — alert sounds are done
+        if voice_buffer_active and self._stop_recording_cb:
+            try:
+                self._stop_recording_cb()
+            except Exception as e:
+                logger.warning("Voice buffer stop failed: %s", e)
 
         # ── Line In relay ─────────────────────────────────────────────────
         if all_entities:
-            self._relay_line_in(all_entities)
+            self._relay_line_in(all_entities, play_voice_buffer=voice_buffer_active)
 
     def _play_combined(self, players: list, sounds: list[str]) -> bool:
         """Concatenate sounds into one file, play it, and wait."""
@@ -412,17 +435,37 @@ class StackManager:
                            known_duration=duration)
         return True
 
-    def _relay_line_in(self, entities: list) -> None:
+    def _relay_line_in(self, entities: list, play_voice_buffer: bool = False) -> None:
         """Stream live Line In audio to media players after alert sounds.
 
-        Reads ``line_in_duration`` from sa_config.  A value of 0 disables
-        the relay.  The relay is interruptible: calling ``_go_idle()`` or
-        ``force_idle()`` sets ``_line_in_stop`` which terminates early.
+        If play_voice_buffer is True, plays the recorded voice buffer file
+        first (dispatch voice captured during alert playback), then switches
+        to the live stream. This ensures no dispatch audio is lost.
         """
         cfg = self.sa_config.load()
         duration = float(cfg.get("line_in_duration", 0))
         if duration <= 0:
             return
+
+        # Play voice buffer first (captured during alert sound playback)
+        voice_buffer_path = "/media/station_assistant/_voice_buffer.mp3"
+        if play_voice_buffer:
+            from pathlib import Path
+            vb = Path(voice_buffer_path)
+            if vb.exists() and vb.stat().st_size > 1000:  # >1KB = has content
+                vb_duration = ha.get_sound_duration("_voice_buffer.mp3")
+                if vb_duration and vb_duration > 0.5:
+                    logger.info(
+                        "Voice buffer: playing %.1fs of captured dispatch audio → %s",
+                        vb_duration, entities,
+                    )
+                    ha.stop_media(entities)
+                    time.sleep(0.2)
+                    ha.play_sound(entities, "_voice_buffer.mp3")
+                    ha.wait_until_idle(
+                        entities[0] if isinstance(entities, list) else entities,
+                        known_duration=vb_duration,
+                    )
 
         stream_url = ha.get_addon_stream_url() + "/api/audio/live"
 

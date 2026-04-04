@@ -205,6 +205,10 @@ stack_mgr.set_alert_callback(_on_stack_alert)
 stack_mgr.set_idle_callback(_on_stack_idle)
 stack_mgr.set_prewarm_callback(lambda: _live_transcoder.start())
 stack_mgr.set_relay_done_callback(lambda: _live_transcoder.stop())
+stack_mgr.set_recording_callbacks(
+    start_fn=lambda path: _live_transcoder.start_recording(path),
+    stop_fn=lambda: _live_transcoder.stop_recording(),
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

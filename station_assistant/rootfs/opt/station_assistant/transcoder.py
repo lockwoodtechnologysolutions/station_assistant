@@ -39,6 +39,11 @@ class LiveTranscoder:
         self._lock = threading.Lock()
         self._subscribers: list[queue.Queue] = []
         self._sub_lock = threading.Lock()
+        # Voice buffer: records MP3 during alert sound playback so dispatch
+        # voice is captured and played back before switching to live stream.
+        self._recording = False
+        self._record_file = None
+        self._record_lock = threading.Lock()
 
     @property
     def running(self) -> bool:
@@ -58,8 +63,43 @@ class LiveTranscoder:
             except ValueError:
                 pass
 
+    def start_recording(self, filepath: str) -> None:
+        """Start recording MP3 output to a file (voice buffer).
+
+        Called when alert sounds start playing. Captures the dispatch
+        voice audio that would otherwise be lost during alert playback.
+        """
+        with self._record_lock:
+            try:
+                self._record_file = open(filepath, "wb")
+                self._recording = True
+                logger.info("Voice buffer: recording to %s", filepath)
+            except Exception as e:
+                logger.error("Voice buffer: failed to start recording: %s", e)
+                self._recording = False
+
+    def stop_recording(self) -> None:
+        """Stop recording and close the buffer file."""
+        with self._record_lock:
+            self._recording = False
+            if self._record_file:
+                try:
+                    self._record_file.close()
+                except Exception:
+                    pass
+                self._record_file = None
+                logger.info("Voice buffer: recording stopped")
+
     def _publish(self, data: bytes) -> None:
-        """Copy MP3 data to every subscriber queue."""
+        """Copy MP3 data to every subscriber queue and recording file."""
+        # Write to voice buffer file if recording
+        with self._record_lock:
+            if self._recording and self._record_file:
+                try:
+                    self._record_file.write(data)
+                except Exception:
+                    pass
+
         with self._sub_lock:
             dead = []
             for q in self._subscribers:
