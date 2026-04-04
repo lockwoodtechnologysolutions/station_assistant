@@ -22,7 +22,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 # ── Application files ──────────────────────────────────────────────────────────
 # CACHEBUST: update the date below to force a clean re-copy on every rebuild
-RUN echo "build-2026-04-02b" > /build_info
+RUN echo "build-2026-04-04a" > /build_info
 COPY rootfs/ /
 
 # ── Permissions ────────────────────────────────────────────────────────────────

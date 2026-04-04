@@ -540,8 +540,8 @@ class DecoderService:
             self._audio_error = ""
             self._restart_backoff = 5.0  # Reset backoff on successful open
             self.stream_bus.sample_rate = sample_rate
-            logger.info("Audio stream opened: device=%s rate=%d chunk=%d",
-                        device_index, sample_rate, chunk_size)
+            logger.info("Audio stream opened: device=%s rate=%d chunk=%d gain=%.1fx",
+                        device_index, sample_rate, chunk_size, self._input_gain)
 
             self._emit_status()
             fire_health_event("started", f"Decoder started: device={device_index} rate={sample_rate}")
