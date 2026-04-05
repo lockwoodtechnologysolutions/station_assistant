@@ -46,6 +46,8 @@ class StackManager:
         self._idle_cb:  Optional[Callable] = None
         self._prewarm_cb: Optional[Callable] = None
         self._relay_done_cb: Optional[Callable] = None
+        self._start_recording_cb: Optional[Callable] = None
+        self._stop_recording_cb: Optional[Callable] = None
 
         # Stack state
         self._stack: list = []
@@ -88,6 +90,11 @@ class StackManager:
     def set_relay_done_callback(self, fn: Callable) -> None:
         """Register function called when the Line In relay finishes."""
         self._relay_done_cb = fn
+
+    def set_recording_callbacks(self, start_fn: Callable, stop_fn: Callable) -> None:
+        """Register functions to start/stop voice buffer recording."""
+        self._start_recording_cb = start_fn
+        self._stop_recording_cb = stop_fn
 
 
 
@@ -284,12 +291,19 @@ class StackManager:
 
         # Pre-warm the live transcoder so MP3 data is ready when the
         # media player connects after alert sounds finish.
+        # Also start recording dispatch voice to a buffer file so audio
+        # that plays during alert sounds is captured and not lost.
         cfg_line_in = float(cfg.get("line_in_duration", 0))
         if cfg_line_in > 0 and self._prewarm_cb:
             try:
                 self._prewarm_cb()
             except Exception as e:
                 logger.warning("Transcoder pre-warm failed: %s", e)
+            if self._start_recording_cb:
+                try:
+                    self._start_recording_cb("/media/station_assistant/_voice_buffer.mp3")
+                except Exception as e:
+                    logger.warning("Voice buffer start failed: %s", e)
 
         # Spawn audio thread — non-blocking
         threading.Thread(
@@ -387,9 +401,18 @@ class StackManager:
         except Exception as e:
             logger.error("Audio playback thread error: %s", e)
 
+        # Stop voice buffer recording — alert sounds are done
+        voice_buffer_ready = False
+        if self._stop_recording_cb:
+            try:
+                self._stop_recording_cb()
+                voice_buffer_ready = True
+            except Exception as e:
+                logger.warning("Voice buffer stop failed: %s", e)
+
         # ── Dispatch audio relay ──────────────────────────────────────────
         if all_entities:
-            self._relay_dispatch_audio(all_entities)
+            self._relay_dispatch_audio(all_entities, play_voice_buffer=voice_buffer_ready)
 
     def _play_combined(self, players: list, sounds: list[str]) -> bool:
         """Concatenate sounds into one file, play it, and wait."""
@@ -410,21 +433,45 @@ class StackManager:
                            known_duration=duration)
         return True
 
-    def _relay_dispatch_audio(self, entities: list) -> None:
+    def _relay_dispatch_audio(self, entities: list, play_voice_buffer: bool = False) -> None:
         """Stream live dispatch audio to media players after alert sounds.
 
-        Reads ``line_in_duration`` from sa_config. A value of 0 disables
-        the relay. Streams the Line In audio in real-time via the
-        Live transcoder so personnel can hear the dispatcher's voice.
+        If play_voice_buffer is True, first plays the recorded voice buffer
+        (dispatch voice captured during alert sound playback), then switches
+        to the live stream. This ensures no dispatch audio is lost.
 
-        Note: dispatch audio that occurs during alert sound playback is
-        not captured. For best results, dispatchers should pause 3-5
-        seconds after paging tones before beginning voice dispatch.
+        Reads ``line_in_duration`` from sa_config. A value of 0 disables
+        the relay.
         """
         cfg = self.sa_config.load()
         duration = float(cfg.get("line_in_duration", 0))
         if duration <= 0:
             return
+
+        # Play voice buffer first (dispatch audio captured during alert sounds)
+        buffer_duration = 0.0
+        if play_voice_buffer:
+            from pathlib import Path
+            vb = Path("/media/station_assistant/_voice_buffer.mp3")
+            if vb.exists() and vb.stat().st_size > 1000:  # >1KB = has content
+                vb_dur = ha.get_sound_duration("_voice_buffer.mp3")
+                if vb_dur and vb_dur > 0.5:
+                    logger.info(
+                        "Voice buffer: playing %.1fs of captured dispatch audio → %s",
+                        vb_dur, entities,
+                    )
+                    ha.stop_media(entities)
+                    time.sleep(0.2)
+                    ha.play_sound(entities, "_voice_buffer.mp3")
+                    ha.wait_until_idle(
+                        entities[0] if isinstance(entities, list) else entities,
+                        known_duration=vb_dur,
+                    )
+                    buffer_duration = vb_dur
+                else:
+                    logger.debug("Voice buffer: too short (%.1fs), skipping", vb_dur or 0)
+            else:
+                logger.debug("Voice buffer: file missing or empty, skipping")
 
         stream_url = ha.get_addon_stream_url() + "/api/audio/live"
 
