@@ -181,12 +181,12 @@ def validate_sequence(data: dict) -> tuple[bool, str]:
         return False, "Tone 2 frequency must be between 100 and 4000 Hz"
 
     # Tone A and Tone B within the same sequence must not overlap.
-    # The decoder uses a ±15 Hz frequency window, so two frequencies
-    # within 30 Hz of each other would be indistinguishable.
-    if abs(tone1 - tone2) < 30.0:
+    # The decoder uses a ±8 Hz frequency window, so two frequencies
+    # within 16 Hz of each other would be indistinguishable.
+    if abs(tone1 - tone2) < 16.0:
         return False, (
             f"Tone A ({tone1} Hz) and Tone B ({tone2} Hz) are too close — "
-            f"must be at least 30 Hz apart (detector uses a ±15 Hz window)"
+            f"must be at least 16 Hz apart (detector uses a ±8 Hz window)"
         )
 
     try:
@@ -226,11 +226,11 @@ def _check_frequency_overlap(tone1: float, tone2: float,
             continue
         for label, new_f in [("A", tone1), ("B", tone2)]:
             for elabel, ef in [("A", seq["tone1_hz"]), ("B", seq["tone2_hz"])]:
-                if abs(new_f - ef) < 30.0 and new_f != ef:
+                if abs(new_f - ef) < 16.0 and new_f != ef:
                     return (
-                        f"Tone {label} ({new_f} Hz) is within 30 Hz of "
+                        f"Tone {label} ({new_f} Hz) is within 16 Hz of "
                         f"\"{seq['name']}\" Tone {elabel} ({ef} Hz) — "
-                        f"this may cause false triggers (detector uses ±15 Hz window)"
+                        f"this may cause false triggers (detector uses ±8 Hz window)"
                     )
     return ""
 

@@ -8,11 +8,11 @@ import numpy as np
 
 # Frequency window half-width in Hz.  For each target frequency we also
 # test at ±FREQ_WINDOW_HZ offsets and return the best magnitude.  This
-# matches how commercial pagers (e.g. Unication) use ~±15 Hz frequency
-# windows per tone code — the actual transmitted frequency can land
-# anywhere within that window.
-FREQ_WINDOW_HZ = 15.0
-FREQ_WINDOW_STEPS = 5  # number of offsets each side (total probes = 2*STEPS + 1 = 11)
+# compensates for encoder frequency drift.  With fractional-k Goertzel
+# the center probe is already exact, so we only need a few offsets.
+# 3 probes total (-8, 0, +8 Hz) keeps CPU usage low on ARM hardware.
+FREQ_WINDOW_HZ = 8.0
+FREQ_WINDOW_STEPS = 1  # number of offsets each side (total probes = 2*STEPS + 1 = 3)
 
 
 def goertzel_magnitude(samples: np.ndarray, target_freq: float, sample_rate: int) -> float:
