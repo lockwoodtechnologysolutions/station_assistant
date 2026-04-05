@@ -234,7 +234,11 @@ class SequenceMachine:
                     return True
 
         elif self.state == COOLDOWN:
-            if (now - self.cooldown_start) >= self.seq["auto_reset_seconds"]:
+            # Short internal cooldown — just long enough to let the current
+            # transmission finish so we don't re-trigger on the tail end of
+            # the same page.  The real cooldown is dupe_cooldown in the
+            # stack manager, tracked per-sequence.
+            if (now - self.cooldown_start) >= 5.0:
                 self.state = IDLE
                 logger.debug("[%s] Cooldown expired, re-armed", self.seq["name"])
 

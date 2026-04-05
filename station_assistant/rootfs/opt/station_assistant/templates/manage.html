@@ -226,7 +226,7 @@
     <table class="data-table">
       <thead><tr>
         <th style="width:28px"></th><th>Status</th><th>Name</th><th>Tone A (Hz)</th><th>Tone B (Hz)</th>
-        <th>Sounds</th><th>Media Players</th><th>Reset (s)</th><th>Actions</th>
+        <th>Sounds</th><th>Media Players</th><th>Actions</th>
       </tr></thead>
       <tbody id="seq-tbody"></tbody>
     </table>
@@ -431,7 +431,7 @@
             <input type="number" id="s-dupe-cooldown" min="0" max="3600" step="5" style="width:70px">
             <span style="font-size:12px;color:var(--text2)">seconds</span>
           </div>
-          <div class="form-hint">Suppress repeats. 0 to disable.</div>
+          <div class="form-hint">After a sequence is decoded, ignore that same sequence for this many seconds. Each sequence has its own independent cooldown. 0 to disable.</div>
         </div>
       </div>
       <div class="form-grid-2" style="margin-top:12px">
@@ -596,12 +596,6 @@
           <label>Tone Confirmation Threshold <span class="label-hint">(10%–100%)</span></label>
           <input id="f-confirm-ratio" type="number" step="1" min="10" max="100" value="70">
           <div class="form-hint">How much of each tone's configured duration must elapse before it is confirmed (default 70%). Lower values confirm faster but may accept shorter transmissions.</div>
-        </div>
-      </div>
-      <div class="form-grid-2">
-        <div class="form-row">
-          <label>Auto-Reset (seconds)</label>
-          <input id="f-reset" type="number" step="1" min="5" max="300" value="30">
         </div>
       </div>
       <div class="form-row">
@@ -852,7 +846,6 @@ function renderSequences() {
       <td class="mono">${s.tone2_hz}</td>
       <td style="font-size:12px;line-height:1.8">${soundStr}</td>
       <td style="font-size:12px;line-height:1.8">${player}</td>
-      <td class="mono">${s.auto_reset_seconds}</td>
       <td>
         <div style="display:flex;gap:4px;align-items:center">
           <button class="btn btn-icon btn-sm" onclick="testSeq('${s.id}')" title="Trigger test alert">&#x25B6;</button>
@@ -885,7 +878,6 @@ async function openAddModal() {
   $('f-t2dur').value     = '3.0';
   $('f-threshold').value = '0.15';
   $('f-confirm-ratio').value = '70';
-  $('f-reset').value     = '30';
   $('f-enabled').checked = true;
   $('f-alert-color').value = '#8b1a1a';
   selectedPlayers = [];
@@ -910,7 +902,6 @@ async function openEditModal(id) {
   $('f-t2dur').value     = seq.tone2_duration || 3.0;
   $('f-threshold').value = seq.threshold || 0.15;
   $('f-confirm-ratio').value = Math.round((seq.confirm_ratio || 0.70) * 100);
-  $('f-reset').value     = seq.auto_reset_seconds || 30;
   $('f-enabled').checked = seq.enabled !== false;
   $('f-alert-color').value = seq.alert_color || '#8b1a1a';
   selectedPlayers = Array.isArray(seq.media_players) ? [...seq.media_players]
@@ -979,7 +970,7 @@ async function saveSequence() {
     tone2_duration:     parseFloat($('f-t2dur').value),
     threshold:          parseFloat($('f-threshold').value),
     confirm_ratio:      parseFloat($('f-confirm-ratio').value) / 100,
-    auto_reset_seconds: parseInt($('f-reset').value),
+    auto_reset_seconds: 30,
     enabled:            $('f-enabled').checked,
     sound_1:            $('f-sound1').value,
     sound_2:            $('f-sound2').value,
@@ -1197,9 +1188,11 @@ async function startMonitor() {
         card.style.borderColor = '';
         card.style.boxShadow   = '';
       }, 4000);
-      // Start cooldown countdown on this card
-      const seq = sequences.find(s => s.id === d.seq_id);
-      if (seq) startCooldownTimer(d.seq_id, seq.auto_reset_seconds);
+      // Start cooldown countdown on this card (uses global dupe_cooldown)
+      api('GET', '/api/sa-config').then(r => {
+        const cd = parseFloat(r.config?.dupe_cooldown ?? 120);
+        if (cd > 0) startCooldownTimer(d.seq_id, cd);
+      }).catch(() => startCooldownTimer(d.seq_id, 120));
     } catch(err) {}
   });
   sseSource.onerror = () => {
