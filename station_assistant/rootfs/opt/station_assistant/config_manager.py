@@ -180,6 +180,15 @@ def validate_sequence(data: dict) -> tuple[bool, str]:
     if not (100.0 <= tone2 <= 4000.0):
         return False, "Tone 2 frequency must be between 100 and 4000 Hz"
 
+    # Tone A and Tone B within the same sequence must not overlap.
+    # The decoder uses a ±15 Hz frequency window, so two frequencies
+    # within 30 Hz of each other would be indistinguishable.
+    if abs(tone1 - tone2) < 30.0:
+        return False, (
+            f"Tone A ({tone1} Hz) and Tone B ({tone2} Hz) are too close — "
+            f"must be at least 30 Hz apart (detector uses a ±15 Hz window)"
+        )
+
     try:
         threshold = float(data.get("threshold", 0.05))
         if not (0.001 <= threshold <= 1.0):
@@ -204,6 +213,28 @@ def validate_sequence(data: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def _check_frequency_overlap(tone1: float, tone2: float,
+                              existing: list, exclude_id: str = "") -> str:
+    """Check if new tone frequencies overlap with existing sequences.
+
+    The decoder uses a ±15 Hz frequency window, so any two tone
+    frequencies within 30 Hz of each other could cross-trigger.
+    Returns an error message string, or empty string if no overlap.
+    """
+    for seq in existing:
+        if seq["id"] == exclude_id:
+            continue
+        for label, new_f in [("A", tone1), ("B", tone2)]:
+            for elabel, ef in [("A", seq["tone1_hz"]), ("B", seq["tone2_hz"])]:
+                if abs(new_f - ef) < 30.0 and new_f != ef:
+                    return (
+                        f"Tone {label} ({new_f} Hz) is within 30 Hz of "
+                        f"\"{seq['name']}\" Tone {elabel} ({ef} Hz) — "
+                        f"this may cause false triggers (detector uses ±15 Hz window)"
+                    )
+    return ""
+
+
 def create_sequence(data: dict) -> tuple[Optional[dict], str]:
     """
     Create a new sequence. Returns (sequence_dict, error_message).
@@ -218,6 +249,13 @@ def create_sequence(data: dict) -> tuple[Optional[dict], str]:
 
     with _seq_lock:
         sequences = _load_raw()
+
+        # Warn if tone frequencies overlap with existing sequences
+        overlap = _check_frequency_overlap(
+            float(data["tone1_hz"]), float(data["tone2_hz"]), sequences
+        )
+        if overlap:
+            return None, overlap
 
         # Ensure unique slug — append numeric suffix if needed
         existing_slugs = {s["slug"] for s in sequences}
@@ -268,6 +306,14 @@ def update_sequence(seq_id: str, data: dict) -> tuple[Optional[dict], Optional[d
         idx = next((i for i, s in enumerate(sequences) if s["id"] == seq_id), None)
         if idx is None:
             return None, None, "Sequence not found"
+
+        # Warn if tone frequencies overlap with other sequences
+        overlap = _check_frequency_overlap(
+            float(data["tone1_hz"]), float(data["tone2_hz"]),
+            sequences, exclude_id=seq_id,
+        )
+        if overlap:
+            return None, None, overlap
 
         old = sequences[idx]
         new_name = str(data["name"]).strip()
