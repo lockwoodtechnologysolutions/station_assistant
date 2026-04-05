@@ -6,11 +6,20 @@ Far more efficient than FFT when targeting a small number of specific frequencie
 
 import numpy as np
 
+# Frequency window half-width in Hz.  For each target frequency we also
+# test at ±FREQ_WINDOW_HZ offsets and return the best magnitude.  This
+# compensates for slight encoder drift or analog path shifts.
+FREQ_WINDOW_HZ = 6.0
+FREQ_WINDOW_STEPS = 3  # number of offsets each side (total probes = 2*STEPS + 1)
+
 
 def goertzel_magnitude(samples: np.ndarray, target_freq: float, sample_rate: int) -> float:
     """
     Compute the normalized power magnitude of a specific frequency within a sample buffer.
-    Uses a vectorized NumPy implementation for performance on ARM/embedded hardware.
+
+    Uses fractional-k Goertzel so the filter is tuned to the exact target
+    frequency rather than the nearest FFT bin.  This eliminates spectral
+    leakage errors that occur when the target falls between bins.
 
     Args:
         samples:     numpy float32 array of audio samples, values in [-1.0, 1.0]
@@ -29,7 +38,8 @@ def goertzel_magnitude(samples: np.ndarray, target_freq: float, sample_rate: int
     if n == 0:
         return 0.0
 
-    k = int(0.5 + (n * target_freq) / sample_rate)
+    # Fractional k — tune to the exact target frequency, not the nearest bin.
+    k = (n * target_freq) / sample_rate
     omega = (2.0 * np.pi * k) / n
     coeff = 2.0 * np.cos(omega)
 
@@ -66,9 +76,10 @@ def rms_level(samples: np.ndarray) -> float:
 
 def batch_goertzel(samples: np.ndarray, frequencies: list, sample_rate: int) -> dict:
     """
-    Compute Goertzel magnitudes for multiple frequencies in a single pass setup.
-    More efficient than calling goertzel_magnitude() individually when many
-    frequencies share the same sample buffer.
+    Compute Goertzel magnitudes for multiple frequencies with a frequency
+    window.  For each target frequency, probes at small offsets around the
+    center and returns the best (highest) magnitude.  This compensates for
+    slight frequency drift in the paging encoder.
 
     Args:
         samples:     numpy float32 array of audio samples
@@ -76,9 +87,21 @@ def batch_goertzel(samples: np.ndarray, frequencies: list, sample_rate: int) -> 
         sample_rate: audio sample rate in Hz
 
     Returns:
-        dict mapping frequency (float) → magnitude (float)
+        dict mapping frequency (float) → best magnitude (float)
     """
     results = {}
+    # Pre-compute the offset list once
+    if FREQ_WINDOW_STEPS > 0 and FREQ_WINDOW_HZ > 0:
+        step = FREQ_WINDOW_HZ / FREQ_WINDOW_STEPS
+        offsets = [i * step for i in range(-FREQ_WINDOW_STEPS, FREQ_WINDOW_STEPS + 1)]
+    else:
+        offsets = [0.0]
+
     for freq in frequencies:
-        results[freq] = goertzel_magnitude(samples, freq, sample_rate)
+        best = 0.0
+        for offset in offsets:
+            mag = goertzel_magnitude(samples, freq + offset, sample_rate)
+            if mag > best:
+                best = mag
+        results[freq] = best
     return results
