@@ -178,6 +178,12 @@ class SequenceMachine:
                 if self.tone1_drop_start is None:
                     self.tone1_drop_start = now
                 elif (now - self.tone1_drop_start) >= DROPOUT_TOLERANCE:
+                    elapsed = now - self.tone1_start
+                    logger.info(
+                        "[%s] Tone 1 lost after %.2fs (mag=%.5f, thr=%.5f, drop=%.3fs) — resetting",
+                        self.seq["name"], elapsed, t1_mag, threshold,
+                        now - self.tone1_drop_start,
+                    )
                     self.state = IDLE
             else:
                 self.tone1_drop_start = None
@@ -186,7 +192,7 @@ class SequenceMachine:
                 if elapsed >= required:
                     self.state = TONE1_CONFIRMED
                     self.inter_tone_start = now
-                    logger.debug("[%s] Tone 1 confirmed (%.2fs)", self.seq["name"], elapsed)
+                    logger.info("[%s] Tone 1 confirmed (%.2fs, mag=%.5f)", self.seq["name"], elapsed, t1_mag)
 
         elif self.state == TONE1_CONFIRMED:
             if t2_active:
@@ -194,7 +200,7 @@ class SequenceMachine:
                 self.tone2_start = now
                 self.tone2_drop_start = None
             elif (now - self.inter_tone_start) > INTER_TONE_TIMEOUT:
-                logger.debug("[%s] Inter-tone timeout, resetting", self.seq["name"])
+                logger.info("[%s] Inter-tone timeout (%.1fs), resetting", self.seq["name"], now - self.inter_tone_start)
                 self.state = IDLE
 
         elif self.state == TONE2_DETECTING:
@@ -204,7 +210,12 @@ class SequenceMachine:
                 if self.tone2_drop_start is None:
                     self.tone2_drop_start = now
                 elif (now - self.tone2_drop_start) >= DROPOUT_TOLERANCE:
-                    logger.debug("[%s] Tone 2 dropped before confirmation, resetting", self.seq["name"])
+                    elapsed = now - self.tone2_start
+                    logger.info(
+                        "[%s] Tone 2 lost after %.2fs (mag=%.5f, thr=%.5f, drop=%.3fs) — resetting",
+                        self.seq["name"], elapsed, t2_mag, threshold,
+                        now - self.tone2_drop_start,
+                    )
                     self.state = IDLE
             else:
                 self.tone2_drop_start = None
