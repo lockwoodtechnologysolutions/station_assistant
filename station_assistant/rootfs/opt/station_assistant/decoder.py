@@ -31,6 +31,7 @@ from ha_client import fire_two_tone_event, fire_health_event, push_decoder_senso
 from detection_log import log_detection, purge_old_records
 from constants import (
     CONFIRM_RATIO, INTER_TONE_TIMEOUT, DROPOUT_TOLERANCE,
+    HYSTERESIS_FACTOR,
     AUDIO_QUEUE_MAXSIZE, STREAM_QUEUE_MAXSIZE, GAIN_MAX,
     RMS_SILENCE_THRESHOLD, FFT_MIN_HZ, FFT_MAX_HZ, FFT_MIN_MAGNITUDE,
     PURGE_INTERVAL_SECONDS, WATCHDOG_INTERVAL_SECONDS,
@@ -133,6 +134,8 @@ class SequenceMachine:
         self.last_t1_mag: float = 0.0
         self.last_t2_mag: float = 0.0
         self.last_confidence: float = 0.0
+        self._t1_latched: bool = False
+        self._t2_latched: bool = False
 
     def process(self, t1_mag: float, t2_mag: float, now: float) -> bool:
         """
@@ -143,8 +146,24 @@ class SequenceMachine:
         self.last_t2_mag = t2_mag
         threshold = self.seq["threshold"]
         confirm_ratio = self.seq.get("confirm_ratio", CONFIRM_RATIO)
-        t1_active = t1_mag >= threshold
-        t2_active = t2_mag >= threshold
+
+        # Hysteresis: once a tone is detected as active, use a lower
+        # threshold to keep it active.  Prevents rapid toggling when the
+        # magnitude fluctuates near threshold (common with radio audio).
+        release_threshold = threshold * HYSTERESIS_FACTOR
+
+        if t1_mag >= threshold:
+            self._t1_latched = True
+        elif t1_mag < release_threshold:
+            self._t1_latched = False
+
+        if t2_mag >= threshold:
+            self._t2_latched = True
+        elif t2_mag < release_threshold:
+            self._t2_latched = False
+
+        t1_active = self._t1_latched
+        t2_active = self._t2_latched
 
         if self.state == IDLE:
             if t1_active:
@@ -232,6 +251,8 @@ class SequenceMachine:
         self.state = IDLE
         self.tone1_drop_start = None
         self.tone2_drop_start = None
+        self._t1_latched = False
+        self._t2_latched = False
 
     def update_sequence(self, seq: dict):
         """Hot-reload sequence parameters without losing state."""
@@ -515,11 +536,13 @@ class DecoderService:
                 sample_rate = native_rate
 
         audio_queue: queue.Queue = queue.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
+        _drop_count = [0]  # mutable counter accessible from callback
 
         def audio_callback(in_data, frame_count, time_info, status):
             try:
-                if not audio_queue.full():
-                    audio_queue.put_nowait(in_data)
+                audio_queue.put_nowait(in_data)
+            except queue.Full:
+                _drop_count[0] += 1
             except Exception:
                 pass  # never crash the audio callback
             return (None, pyaudio.paContinue)
@@ -549,6 +572,7 @@ class DecoderService:
             # Run the purge loop periodically alongside audio processing
             last_purge = time.time()
             last_watchdog = time.time()
+            last_drop_log = time.time()
             PURGE_INTERVAL = PURGE_INTERVAL_SECONDS
             WATCHDOG_INTERVAL = 60  # push heartbeat every 60 seconds
 
@@ -577,6 +601,12 @@ class DecoderService:
                 if now - last_watchdog > WATCHDOG_INTERVAL:
                     push_watchdog_sensor()
                     last_watchdog = now
+
+                # Log audio chunk drops (indicates processing can't keep up)
+                if now - last_drop_log > 30 and _drop_count[0] > 0:
+                    logger.warning("Audio queue overflow: %d chunks dropped in last 30s", _drop_count[0])
+                    _drop_count[0] = 0
+                    last_drop_log = now
 
         except OSError as e:
             self._audio_error = f"Audio device error: {e}"
