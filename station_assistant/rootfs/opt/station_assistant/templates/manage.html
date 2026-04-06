@@ -109,6 +109,10 @@
     .form-hint { font-size: 11px; color: var(--text2); }
     .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .learn-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--border); display: inline-block; transition: background .3s; }
+    .learn-dot.captured { background: var(--accent); }
+    .learn-dot.active { background: var(--accent2); animation: pulse-dot 1s infinite; }
+    @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .label-hint { font-weight: 400; color: var(--text2); }
     .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
     .checkbox-label input { width: auto; }
@@ -214,13 +218,15 @@
 <div id="tab-sequences" class="tab-content active">
   <div class="toolbar">
     <h2>Paging Sequences</h2>
-    <button class="btn btn-primary" onclick="openAddModal()">+ Add Sequence</button>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Manually</button>
+    <button class="btn btn-secondary" onclick="openLearnWizard()">Learn New Sequence</button>
   </div>
   <div id="seq-empty" class="empty-state" style="display:none">
     <div class="empty-icon">🔕</div>
     <div class="empty-title">No sequences configured</div>
     <div class="empty-sub">Add a paging tone sequence to get started.</div>
-    <button class="btn btn-primary" onclick="openAddModal()">+ Add First Sequence</button>
+    <button class="btn btn-primary" onclick="openAddModal()">+ Add Manually</button>
+    <button class="btn btn-secondary" onclick="openLearnWizard()">Learn New Sequence</button>
   </div>
   <div class="table-wrap" id="seq-table-wrap">
     <table class="data-table">
@@ -621,6 +627,101 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" id="modal-save-btn" onclick="saveSequence()">Save &amp; Create Automation</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Learn Mode Wizard ════════════════════════════════════════════════════ -->
+<div id="learn-modal" class="modal-overlay" style="display:none" onclick="closeModalOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Learn New Sequence</h3>
+      <button class="modal-close" onclick="cancelLearn()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Step 1: Listening -->
+      <div id="learn-step-listen">
+        <div class="form-hint" style="margin-bottom:12px;font-size:13px">
+          <strong>How it works:</strong> The system will listen for two-tone pages and automatically detect the frequencies and durations.
+          Have your dispatcher send the page <strong>3 times</strong> for best accuracy. Gain is temporarily set to unity (1.0x) for clean measurement.
+        </div>
+        <div style="text-align:center;padding:16px 0">
+          <div id="learn-status-msg" style="font-size:15px;font-weight:600;margin-bottom:12px">Ready to listen.</div>
+          <div style="display:flex;justify-content:center;gap:24px;margin-bottom:16px">
+            <div>
+              <div style="font-size:11px;color:var(--text2)">Live Frequency</div>
+              <div id="learn-live-freq" class="mono" style="font-size:20px">-- Hz</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text2)">Magnitude</div>
+              <div id="learn-live-mag" class="mono" style="font-size:20px">--</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--text2)">Current Tone</div>
+              <div id="learn-current-tone" class="mono" style="font-size:20px">--</div>
+            </div>
+          </div>
+          <div id="learn-samples-display" style="margin-bottom:16px">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:6px">Samples captured: <strong id="learn-sample-count">0</strong> / 3</div>
+            <div id="learn-sample-list" style="font-size:12px"></div>
+          </div>
+          <div id="learn-progress-dots" style="display:flex;justify-content:center;gap:8px;margin-bottom:16px">
+            <span class="learn-dot" id="learn-dot-1"></span>
+            <span class="learn-dot" id="learn-dot-2"></span>
+            <span class="learn-dot" id="learn-dot-3"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Results -->
+      <div id="learn-step-result" style="display:none">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:15px;font-weight:600;color:var(--accent)">Tones Learned Successfully</div>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label>Tone A Frequency</label>
+            <div class="mono" id="learn-result-t1hz" style="font-size:18px;font-weight:600">--</div>
+          </div>
+          <div class="form-row">
+            <label>Tone A Duration</label>
+            <div class="mono" id="learn-result-t1dur" style="font-size:18px;font-weight:600">--</div>
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label>Tone B Frequency</label>
+            <div class="mono" id="learn-result-t2hz" style="font-size:18px;font-weight:600">--</div>
+          </div>
+          <div class="form-row">
+            <label>Tone B Duration</label>
+            <div class="mono" id="learn-result-t2dur" style="font-size:18px;font-weight:600">--</div>
+          </div>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label>Suggested Threshold</label>
+            <div class="mono" id="learn-result-threshold" style="font-size:18px;font-weight:600">--</div>
+          </div>
+          <div class="form-row">
+            <label>Avg Magnitude</label>
+            <div class="mono" id="learn-result-mag" style="font-size:14px">--</div>
+          </div>
+        </div>
+        <hr style="margin:16px 0;border-color:var(--border)">
+        <div class="form-row">
+          <label>Sequence Name *</label>
+          <input id="learn-name" type="text" placeholder="e.g. Engine 1, EMS Response" maxlength="64">
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary" onclick="cancelLearn()">Cancel</button>
+      <button class="btn btn-primary" id="learn-start-btn" onclick="startLearn()">Start Listening</button>
+      <button class="btn btn-primary" id="learn-save-btn" style="display:none" onclick="saveLearnedSequence()">Save Sequence</button>
+      <button class="btn btn-secondary" id="learn-use-btn" style="display:none" onclick="useLearnedValues()">Use in Manual Setup</button>
     </div>
   </div>
 </div>
@@ -1673,6 +1774,194 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(updateBadges, 15000);
 });
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEARN MODE
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _learnPollTimer = null;
+let _learnSavedGain = 5;
+let _learnResult = null;
+
+function openLearnWizard() {
+  _learnResult = null;
+  $('learn-step-listen').style.display = '';
+  $('learn-step-result').style.display = 'none';
+  $('learn-start-btn').style.display = '';
+  $('learn-save-btn').style.display = 'none';
+  $('learn-use-btn').style.display = 'none';
+  $('learn-status-msg').textContent = 'Ready to listen.';
+  $('learn-live-freq').textContent = '-- Hz';
+  $('learn-live-mag').textContent = '--';
+  $('learn-current-tone').textContent = '--';
+  $('learn-sample-count').textContent = '0';
+  $('learn-sample-list').innerHTML = '';
+  for (let i = 1; i <= 3; i++) {
+    const dot = $('learn-dot-' + i);
+    dot.className = 'learn-dot';
+  }
+  $('learn-modal').style.display = 'flex';
+}
+
+async function startLearn() {
+  try {
+    const d = await api('POST', '/api/learn/start', {});
+    if (d.status !== 'ok') { alert(d.message || 'Failed to start'); return; }
+    _learnSavedGain = d.saved_gain || 5;
+    $('learn-start-btn').style.display = 'none';
+    $('learn-status-msg').textContent = 'Listening... have dispatch send the two-tone page.';
+    $('learn-dot-1').className = 'learn-dot active';
+    _learnPollTimer = setInterval(pollLearnStatus, 400);
+  } catch(e) {
+    alert('Failed to start learn mode: ' + e);
+  }
+}
+
+async function pollLearnStatus() {
+  try {
+    const d = await api('GET', '/api/learn/status');
+    if (d.status !== 'ok') return;
+    const s = d.session;
+
+    $('learn-status-msg').textContent = s.message || '';
+    $('learn-sample-count').textContent = String(s.sample_count);
+
+    // Live readings
+    if (s.live_freq > 0) {
+      $('learn-live-freq').textContent = s.live_freq.toFixed(1) + ' Hz';
+      $('learn-live-mag').textContent = s.live_mag.toFixed(4);
+    } else {
+      $('learn-live-freq').textContent = '-- Hz';
+      $('learn-live-mag').textContent = '--';
+    }
+
+    // Current tone
+    if (s.current_tone) {
+      $('learn-current-tone').textContent = 'Tone ' + s.current_tone.tone + ': ' + s.current_tone.freq.toFixed(0) + ' Hz (' + s.current_tone.elapsed.toFixed(1) + 's)';
+    } else {
+      $('learn-current-tone').textContent = '--';
+    }
+
+    // Update dots
+    for (let i = 1; i <= 3; i++) {
+      const dot = $('learn-dot-' + i);
+      if (i <= s.sample_count) {
+        dot.className = 'learn-dot captured';
+      } else if (i === s.sample_count + 1 && s.state !== 'complete' && s.state !== 'idle') {
+        dot.className = 'learn-dot active';
+      } else {
+        dot.className = 'learn-dot';
+      }
+    }
+
+    // Sample details
+    if (s.samples && s.samples.length > 0) {
+      let html = '';
+      s.samples.forEach((sam, i) => {
+        html += '<div style="margin:4px 0">Sample ' + (i+1) + ': A=' + sam.tone_a_freq.toFixed(1) + ' Hz/' + sam.tone_a_duration.toFixed(2) + 's, B=' + sam.tone_b_freq.toFixed(1) + ' Hz/' + sam.tone_b_duration.toFixed(2) + 's</div>';
+      });
+      $('learn-sample-list').innerHTML = html;
+    }
+
+    // Complete — show results
+    if (s.state === 'complete' || (s.sample_count >= 3)) {
+      clearInterval(_learnPollTimer);
+      _learnPollTimer = null;
+      showLearnResult();
+    }
+  } catch(e) {
+    // Ignore transient errors
+  }
+}
+
+async function showLearnResult() {
+  try {
+    const d = await api('GET', '/api/learn/result');
+    if (d.status !== 'ok') return;
+    _learnResult = d.result;
+
+    $('learn-result-t1hz').textContent = d.result.tone1_hz.toFixed(1) + ' Hz';
+    $('learn-result-t1dur').textContent = d.result.tone1_duration.toFixed(1) + 's';
+    $('learn-result-t2hz').textContent = d.result.tone2_hz.toFixed(1) + ' Hz';
+    $('learn-result-t2dur').textContent = d.result.tone2_duration.toFixed(1) + 's';
+    $('learn-result-threshold').textContent = d.result.suggested_threshold;
+    $('learn-result-mag').textContent = 'A: ' + d.result.avg_magnitude_a.toFixed(4) + ' / B: ' + d.result.avg_magnitude_b.toFixed(4);
+    $('learn-name').value = '';
+
+    $('learn-step-listen').style.display = 'none';
+    $('learn-step-result').style.display = '';
+    $('learn-save-btn').style.display = '';
+    $('learn-use-btn').style.display = '';
+  } catch(e) {
+    console.error('showLearnResult:', e);
+  }
+}
+
+async function saveLearnedSequence() {
+  if (!_learnResult) return;
+  const name = $('learn-name').value.trim();
+  if (!name) { alert('Please enter a sequence name.'); return; }
+
+  const payload = {
+    name:               name,
+    tone1_hz:           _learnResult.tone1_hz,
+    tone1_duration:     _learnResult.tone1_duration,
+    tone2_hz:           _learnResult.tone2_hz,
+    tone2_duration:     _learnResult.tone2_duration,
+    threshold:          _learnResult.suggested_threshold,
+    confirm_ratio:      0.70,
+    auto_reset_seconds: 30,
+    enabled:            true,
+    sound_1:            '',
+    sound_2:            '',
+    sound_3:            '',
+    media_players:      [],
+    alert_color:        '#8b1a1a',
+  };
+
+  try {
+    const d = await api('POST', '/api/sequences', payload);
+    if (d.status !== 'ok') { alert(d.message || 'Failed to save'); return; }
+    await stopLearnSession();
+    $('learn-modal').style.display = 'none';
+    renderSequences();
+    // Open edit modal so user can configure sounds/players
+    setTimeout(() => openEditModal(d.sequence.id), 300);
+  } catch(e) {
+    alert('Failed to save: ' + e);
+  }
+}
+
+function useLearnedValues() {
+  if (!_learnResult) return;
+  stopLearnSession();
+  $('learn-modal').style.display = 'none';
+  openAddModal();
+  setTimeout(() => {
+    $('f-t1hz').value = _learnResult.tone1_hz;
+    $('f-t1dur').value = _learnResult.tone1_duration;
+    $('f-t2hz').value = _learnResult.tone2_hz;
+    $('f-t2dur').value = _learnResult.tone2_duration;
+    $('f-threshold').value = _learnResult.suggested_threshold;
+  }, 200);
+}
+
+async function cancelLearn() {
+  await stopLearnSession();
+  $('learn-modal').style.display = 'none';
+}
+
+async function stopLearnSession() {
+  if (_learnPollTimer) {
+    clearInterval(_learnPollTimer);
+    _learnPollTimer = null;
+  }
+  try {
+    await api('POST', '/api/learn/stop', { saved_gain: _learnSavedGain });
+  } catch(e) {
+    // Ignore
+  }
+}
 
 </script>
 <footer class="app-footer">

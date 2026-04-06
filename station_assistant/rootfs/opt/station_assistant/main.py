@@ -50,6 +50,7 @@ from sse import SSEBus
 from sa_config import SAConfig
 from stack_manager import StackManager
 from transcoder import LiveTranscoder
+from learn import LearnSession
 from constants import APP_VERSION, MAX_SEQUENCES, SSE_KEEPALIVE_TIMEOUT
 
 # ── App setup ──────────────────────────────────────────────────────────────────
@@ -185,6 +186,7 @@ def _on_decoder_detection(seq: dict, confidence: float, detected_at: str) -> Non
 
 decoder = DecoderService(sse_bus, on_detection_callback=_on_decoder_detection)
 _live_transcoder = LiveTranscoder(decoder.stream_bus)
+_learn_session: LearnSession | None = None
 
 
 # ── Stack manager callbacks → SocketIO broadcast ──────────────────────────────
@@ -644,6 +646,67 @@ def api_delete_sound(filename):
         logger.info("Sound deleted: %s", safe_name)
         return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "Sound not found"}), 404
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LEARN MODE API
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/learn/start", methods=["POST"])
+def api_learn_start():
+    """Start a learn-mode session.  Temporarily sets gain to unity."""
+    global _learn_session
+    if _learn_session and _learn_session.state not in ("idle", "complete"):
+        return jsonify({"status": "error", "message": "Learn session already active"}), 400
+
+    # Save current gain and set to unity for clean measurement
+    opts = cm.get_options()
+    saved_gain = opts.get("input_gain", 5)
+
+    # Set decoder to unity gain (input_gain=5 → 1.0x)
+    decoder.input_gain = 1.0
+    logger.info("Learn mode: gain set to 1.0x (was %.1fx)", saved_gain / 100.0 * 20.0)
+
+    _learn_session = LearnSession(decoder.stream_bus)
+    _learn_session.start()
+    return jsonify({"status": "ok", "saved_gain": saved_gain})
+
+
+@app.route("/api/learn/stop", methods=["POST"])
+def api_learn_stop():
+    """Stop the current learn session and restore gain."""
+    global _learn_session
+    data = request.get_json() or {}
+    saved_gain = int(data.get("saved_gain", 5))
+
+    if _learn_session:
+        _learn_session.stop()
+
+    # Restore gain
+    decoder.input_gain = saved_gain / 100.0 * 20.0
+    logger.info("Learn mode: gain restored to %.1fx", decoder.input_gain)
+
+    _learn_session = None
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/learn/status")
+def api_learn_status():
+    """Return current learn session status."""
+    if not _learn_session:
+        return jsonify({"status": "ok", "session": {"state": "idle", "sample_count": 0, "max_samples": 3, "samples": [], "message": "No active session."}})
+    return jsonify({"status": "ok", "session": _learn_session.get_status()})
+
+
+@app.route("/api/learn/result")
+def api_learn_result():
+    """Return averaged result from completed learn session."""
+    if not _learn_session:
+        return jsonify({"status": "error", "message": "No active learn session"}), 400
+    result = _learn_session.get_result()
+    if not result:
+        return jsonify({"status": "error", "message": "No samples captured yet"}), 400
+    return jsonify({"status": "ok", "result": result})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
