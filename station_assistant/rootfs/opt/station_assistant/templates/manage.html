@@ -1189,7 +1189,7 @@ async function startMonitor() {
         card.style.boxShadow   = '';
       }, 4000);
       // Start cooldown countdown on this card (uses global dupe_cooldown)
-      api('GET', '/api/sa-config').then(r => {
+      api('GET', '/api/settings').then(r => {
         const cd = parseFloat(r.config?.dupe_cooldown ?? 120);
         if (cd > 0) startCooldownTimer(d.seq_id, cd);
       }).catch(() => startCooldownTimer(d.seq_id, 120));
