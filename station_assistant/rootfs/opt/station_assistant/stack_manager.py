@@ -156,6 +156,8 @@ class StackManager:
             logger.info("New incident: %s (confidence=%.2f)", seq["name"], confidence)
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
+            # Start recording immediately — captures voice right after tones
+            self._start_voice_recording()
 
         elif self._stack_open:
             # ── Add to existing stack ──────────────────────────────────────
@@ -169,6 +171,9 @@ class StackManager:
             # Reset timers — more tones may follow
             self._reset_window_timer(stack_window)
             self._reset_gap_timer(page_gap)
+            # Restart recording — discard buffer that now contains stacked
+            # tones, start fresh so buffer has voice after this tone
+            self._start_voice_recording()
 
         else:
             # ── Stack window closed — new incident ─────────────────────────
@@ -180,12 +185,15 @@ class StackManager:
             logger.info("New incident (after closed window): %s", seq["name"])
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
+            self._start_voice_recording()
 
     def _start_voice_recording(self) -> None:
-        """Start the transcoder and voice buffer recording.
+        """Start (or restart) the transcoder and voice buffer recording.
 
-        Called when the gap timer expires — all paging tones are done,
-        so the buffer only captures the dispatcher's voice, not tones.
+        Called on every detection. On a stacked dispatch, each new tone
+        restarts the recording — discards any captured tones from the
+        previous page and starts fresh. The buffer file is opened in
+        write mode so previous content is truncated automatically.
         """
         cfg = self.sa_config.load()
         cfg_line_in = float(cfg.get("line_in_duration", 0))
@@ -311,10 +319,9 @@ class StackManager:
         except Exception as e:
             logger.error("Failed to fire station_assistant_alert: %s", e)
 
-        # Start transcoder + voice buffer recording now that all tones are
-        # done.  We can't start earlier because stacked pages would be
-        # captured and replayed over the PA speakers.
-        self._start_voice_recording()
+        # Voice buffer recording is already running — started at detection
+        # time and restarted on each stacked tone.  By now all tones are
+        # done and the buffer is capturing the dispatcher's voice.
 
         # Spawn audio thread — non-blocking
         threading.Thread(
