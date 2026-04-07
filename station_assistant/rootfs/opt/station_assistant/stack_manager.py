@@ -156,6 +156,9 @@ class StackManager:
             logger.info("New incident: %s (confidence=%.2f)", seq["name"], confidence)
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
+            # Start recording immediately so we capture the dispatcher's
+            # voice from the moment of detection — not after the gap timer.
+            self._start_voice_recording()
 
         elif self._stack_open:
             # ── Add to existing stack ──────────────────────────────────────
@@ -180,6 +183,29 @@ class StackManager:
             logger.info("New incident (after closed window): %s", seq["name"])
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
+            self._start_voice_recording()
+
+    def _start_voice_recording(self) -> None:
+        """Start the transcoder and voice buffer recording immediately.
+
+        Called on first tone detection so the buffer captures the
+        dispatcher's voice from the start — not after the gap timer.
+        """
+        cfg = self.sa_config.load()
+        cfg_line_in = float(cfg.get("line_in_duration", 0))
+        if cfg_line_in <= 0:
+            return
+
+        if self._prewarm_cb:
+            try:
+                self._prewarm_cb()
+            except Exception as e:
+                logger.warning("Transcoder pre-warm failed: %s", e)
+        if self._start_recording_cb:
+            try:
+                self._start_recording_cb("/media/station_assistant/_voice_buffer.mp3")
+            except Exception as e:
+                logger.warning("Voice buffer start failed: %s", e)
 
     def force_idle(self) -> None:
         """Manually return to idle (e.g. disarm button)."""
@@ -289,21 +315,9 @@ class StackManager:
         except Exception as e:
             logger.error("Failed to fire station_assistant_alert: %s", e)
 
-        # Pre-warm the live transcoder so MP3 data is ready when the
-        # media player connects after alert sounds finish.
-        # Also start recording dispatch voice to a buffer file so audio
-        # that plays during alert sounds is captured and not lost.
-        cfg_line_in = float(cfg.get("line_in_duration", 0))
-        if cfg_line_in > 0 and self._prewarm_cb:
-            try:
-                self._prewarm_cb()
-            except Exception as e:
-                logger.warning("Transcoder pre-warm failed: %s", e)
-            if self._start_recording_cb:
-                try:
-                    self._start_recording_cb("/media/station_assistant/_voice_buffer.mp3")
-                except Exception as e:
-                    logger.warning("Voice buffer start failed: %s", e)
+        # Transcoder + voice buffer recording already started at detection
+        # time (on_tone_detected → _start_voice_recording), so the buffer
+        # captures the dispatcher's voice from the moment tones are decoded.
 
         # Spawn audio thread — non-blocking
         threading.Thread(
