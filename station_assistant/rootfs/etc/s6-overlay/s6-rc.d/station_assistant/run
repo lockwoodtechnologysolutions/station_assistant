@@ -12,5 +12,5 @@ exec gunicorn \
   --bind 0.0.0.0:8099 \
   --timeout 120 \
   --log-level info \
-  --access-logfile - \
+  --access-logfile /dev/null \
   "main:app"
