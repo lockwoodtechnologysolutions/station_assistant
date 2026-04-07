@@ -1081,12 +1081,13 @@ def api_audio_gain_get():
 
 @app.route("/api/audio/gain", methods=["POST"])
 def api_audio_gain_set():
-    """Set input gain (0-100) and restart decoder."""
+    """Set input gain (0-100) and restart decoder in the background."""
     try:
         data = request.get_json() or {}
         gain = max(0, min(100, int(data.get("gain", 50))))
         cm.save_runtime("input_gain", gain)
-        decoder.restart()
+        # Restart in background so the HTTP response isn't blocked
+        threading.Thread(target=decoder.restart, daemon=True, name="gain-restart").start()
         return jsonify({"status": "ok", "gain": gain})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1094,10 +1095,10 @@ def api_audio_gain_set():
 
 @app.route("/api/decoder/restart", methods=["POST"])
 def api_decoder_restart():
-    """Restart the audio decoder service."""
+    """Restart the audio decoder service in the background."""
     try:
-        decoder.restart()
-        return jsonify({"status": "ok", "message": "Decoder restarted"})
+        threading.Thread(target=decoder.restart, daemon=True, name="api-restart").start()
+        return jsonify({"status": "ok", "message": "Decoder restarting..."})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
