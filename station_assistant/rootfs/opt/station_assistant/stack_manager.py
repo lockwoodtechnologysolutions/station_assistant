@@ -156,9 +156,6 @@ class StackManager:
             logger.info("New incident: %s (confidence=%.2f)", seq["name"], confidence)
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
-            # Start recording immediately so we capture the dispatcher's
-            # voice from the moment of detection — not after the gap timer.
-            self._start_voice_recording()
 
         elif self._stack_open:
             # ── Add to existing stack ──────────────────────────────────────
@@ -183,13 +180,12 @@ class StackManager:
             logger.info("New incident (after closed window): %s", seq["name"])
             self._fire_dashboard(return_timeout)
             self._reset_gap_timer(page_gap)
-            self._start_voice_recording()
 
     def _start_voice_recording(self) -> None:
-        """Start the transcoder and voice buffer recording immediately.
+        """Start the transcoder and voice buffer recording.
 
-        Called on first tone detection so the buffer captures the
-        dispatcher's voice from the start — not after the gap timer.
+        Called when the gap timer expires — all paging tones are done,
+        so the buffer only captures the dispatcher's voice, not tones.
         """
         cfg = self.sa_config.load()
         cfg_line_in = float(cfg.get("line_in_duration", 0))
@@ -315,9 +311,10 @@ class StackManager:
         except Exception as e:
             logger.error("Failed to fire station_assistant_alert: %s", e)
 
-        # Transcoder + voice buffer recording already started at detection
-        # time (on_tone_detected → _start_voice_recording), so the buffer
-        # captures the dispatcher's voice from the moment tones are decoded.
+        # Start transcoder + voice buffer recording now that all tones are
+        # done.  We can't start earlier because stacked pages would be
+        # captured and replayed over the PA speakers.
+        self._start_voice_recording()
 
         # Spawn audio thread — non-blocking
         threading.Thread(
