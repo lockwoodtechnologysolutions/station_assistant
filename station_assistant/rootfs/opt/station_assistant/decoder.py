@@ -588,14 +588,26 @@ class DecoderService:
             last_purge = time.time()
             last_watchdog = time.time()
             last_drop_log = time.time()
+            last_audio_received = time.time()
             PURGE_INTERVAL = PURGE_INTERVAL_SECONDS
             WATCHDOG_INTERVAL = 60  # push heartbeat every 60 seconds
+            AUDIO_STALE_TIMEOUT = 10.0  # restart if no audio data for this long
 
             while not self._stop_event.is_set() and stream.is_active():
                 try:
                     raw = audio_queue.get(timeout=0.5)
                 except queue.Empty:
+                    # No audio data — check if the stream has gone stale
+                    if time.time() - last_audio_received > AUDIO_STALE_TIMEOUT:
+                        logger.error(
+                            "Audio stream stale: no data for %.0fs — forcing restart",
+                            time.time() - last_audio_received,
+                        )
+                        fire_health_event("audio_lost", "Audio stream stale — no data received")
+                        break  # exit loop → triggers auto-restart via watchdog
                     continue
+
+                last_audio_received = time.time()
 
                 try:
                     samples = np.frombuffer(raw, dtype=np.float32)
