@@ -270,18 +270,15 @@ class StackManager:
         stack_snapshot   = list(self._stack)
         is_multi         = len(stack_snapshot) > 1
 
-        # Single-unit: close window now and start return timer immediately
+        # Single-unit: close window now. Return timer starts AFTER audio
+        # playback finishes (in _play_audio thread) so the dashboard stays
+        # in alert state for the full duration of audio playback.
         if not is_multi:
             self._stack_open = False
             if self._window_timer:
                 self._window_timer.cancel()
                 self._window_timer = None
-            if self._return_timer:
-                self._return_timer.cancel()
-            self._return_timer = threading.Timer(return_timeout, self._go_idle)
-            self._return_timer.daemon = True
-            self._return_timer.start()
-            logger.info("Single-unit dispatch — return timer started (%.0fs)", return_timeout)
+            logger.info("Single-unit dispatch — window closed, return timer deferred until audio finishes")
 
         payload = {
             "event":          "alert",
@@ -432,6 +429,17 @@ class StackManager:
         # ── Dispatch audio relay ──────────────────────────────────────────
         if all_entities:
             self._relay_dispatch_audio(all_entities, play_voice_buffer=voice_buffer_ready)
+
+        # All audio finished — now start the return timer so the dashboard
+        # stays in alert state for the full duration of audio playback.
+        cfg = self.sa_config.load()
+        return_timeout = float(cfg.get("return_timeout", 45))
+        if self._return_timer:
+            self._return_timer.cancel()
+        self._return_timer = threading.Timer(return_timeout, self._go_idle)
+        self._return_timer.daemon = True
+        self._return_timer.start()
+        logger.info("Audio playback complete — return timer started (%.0fs)", return_timeout)
 
     def _play_combined(self, players: list, sounds: list[str]) -> bool:
         """Concatenate sounds into one file, play it, and wait."""

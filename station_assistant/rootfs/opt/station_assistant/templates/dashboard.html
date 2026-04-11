@@ -1205,12 +1205,18 @@ socket.on('alert', (payload) => {
     return;
   }
   if (payload.event === 'gap_expired') {
-    // Gap timer fired — start return timer and play dashboard audio.
-    // Don't re-render alert cards (avoids visual blip).
+    // Gap timer fired — close the stack window indicator.
+    // Return timer is managed server-side and starts AFTER audio
+    // playback finishes, so the dashboard stays in alert state
+    // for the full duration of alert sounds + voice buffer + live stream.
     stopWindowIndicator();
     document.getElementById('stack-fill').className = 'stack-window-fill closed';
     document.getElementById('stack-val').textContent = 'closed';
-    startReturnTimer();
+    return;
+  }
+  // Ignore non-alert events (relay_start, relay_stop, etc.) —
+  // these have no stack data and would create empty alert cards.
+  if (payload.event !== 'alert') {
     return;
   }
   // Track last alert in bottom bar
