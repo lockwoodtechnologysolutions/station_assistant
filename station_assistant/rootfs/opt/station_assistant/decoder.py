@@ -765,6 +765,13 @@ class DecoderService:
             try:
                 suppressed = self._on_detection_callback(seq, confidence, detected_at)
                 if suppressed:
+                    # Log the duplicate for visibility but don't fire HA events
+                    # or SSE — prevents interrupting voice buffer playback
+                    logger.info(
+                        "Detection (duplicate, suppressed): %s (confidence=%.2f)",
+                        seq["name"], confidence,
+                    )
+                    log_detection(seq, confidence, detected_at)
                     return
             except Exception as e:
                 logger.error("Detection callback error: %s", e)
