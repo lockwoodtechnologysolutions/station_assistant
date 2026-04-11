@@ -771,7 +771,7 @@ class DecoderService:
                         "Detection (duplicate, suppressed): %s (confidence=%.2f)",
                         seq["name"], confidence,
                     )
-                    log_detection(seq, confidence, detected_at)
+                    log_detection(seq, confidence, detected_at, source="duplicate")
                     return
             except Exception as e:
                 logger.error("Detection callback error: %s", e)

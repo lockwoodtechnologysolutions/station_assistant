@@ -1513,6 +1513,8 @@ async function loadLog() {
   $('log-tbody').innerHTML = dets.map(d => {
     const src = d.source === 'test'
       ? '<span style="color:var(--warn)">Manual Test</span>'
+      : d.source === 'duplicate'
+      ? '<span style="color:var(--text2)">Duplicate (suppressed)</span>'
       : '<span style="color:var(--success)">Two-Tone Decoded</span>';
     return `
     <tr>
