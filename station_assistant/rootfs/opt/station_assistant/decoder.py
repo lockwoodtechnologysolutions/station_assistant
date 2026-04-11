@@ -754,10 +754,22 @@ class DecoderService:
                 del self.machines[dead_id]
 
     def _on_detection(self, seq: dict, machine: SequenceMachine):
-        """Handle a confirmed detection: log it, fire HA event, emit to UI."""
-        self._total_detections += 1
+        """Handle a confirmed detection: check for duplicates, then log/fire events."""
         confidence = machine.last_confidence
         detected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Check with the stack manager first — if it's a duplicate, don't
+        # fire HA events or log.  This prevents the HA automation from
+        # interrupting voice buffer playback on duplicate pages.
+        if self._on_detection_callback:
+            try:
+                suppressed = self._on_detection_callback(seq, confidence, detected_at)
+                if suppressed:
+                    return
+            except Exception as e:
+                logger.error("Detection callback error: %s", e)
+
+        self._total_detections += 1
 
         # Log to SQLite
         log_detection(seq, confidence, detected_at)
@@ -777,13 +789,6 @@ class DecoderService:
         })
 
         logger.info("Detection fired: %s (confidence=%.2f)", seq["name"], confidence)
-
-        # External callback (e.g. stack manager wiring in main.py)
-        if self._on_detection_callback:
-            try:
-                self._on_detection_callback(seq, confidence, detected_at)
-            except Exception as e:
-                logger.error("Detection callback error: %s", e)
 
     def _emit_peak_frequency(self, samples: np.ndarray, sample_rate: int, rms: float):
         """Run FFT to find the dominant frequency in the audio chunk."""

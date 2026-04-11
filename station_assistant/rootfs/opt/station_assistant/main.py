@@ -174,14 +174,14 @@ sse_bus   = SSEBus()
 stack_mgr = StackManager(sa_config)
 
 
-def _on_decoder_detection(seq: dict, confidence: float, detected_at: str) -> None:
+def _on_decoder_detection(seq: dict, confidence: float, detected_at: str) -> bool:
     """Called by DecoderService after each confirmed detection.
 
-    The decoder already handles HA events, SQLite logging, and SSE emission.
-    This callback only adds the stack manager layer for incident accumulation
-    and dashboard broadcast.
+    Returns True if the detection was suppressed (duplicate cooldown).
+    The decoder uses this to skip HA events, logging, and SSE emission
+    for duplicates — prevents interrupting voice buffer playback.
     """
-    stack_mgr.on_tone_detected(seq, confidence)
+    return stack_mgr.on_tone_detected(seq, confidence)
 
 
 decoder = DecoderService(sse_bus, on_detection_callback=_on_decoder_detection)

@@ -98,10 +98,11 @@ class StackManager:
 
 
 
-    def on_tone_detected(self, seq: dict, confidence: float) -> None:
+    def on_tone_detected(self, seq: dict, confidence: float) -> bool:
         """
         Called by the decoder when a tone sequence is confirmed.
         seq is a full sequence dict from sequences.json.
+        Returns True if the detection was suppressed (duplicate).
         """
         now = time.time()
         ts  = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -115,7 +116,7 @@ class StackManager:
                     "Duplicate suppressed: %s (%.0fs ago, cooldown=%.0fs)",
                     seq["name"], now - _last, _dupe_cd,
                 )
-                return
+                return True
         self._last_detection[seq["id"]] = now
 
         unit = {
