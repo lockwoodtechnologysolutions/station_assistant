@@ -63,6 +63,8 @@ def get_options() -> dict:
 
     Merge order: defaults < HA options.json < runtime_settings.json
     This ensures user-adjusted values (like input_gain) survive HA restarts.
+    audio_device_index is excluded from runtime override — always comes
+    from HA options.json so the add-on Options page is the source of truth.
     """
     try:
         with open(OPTIONS_PATH, "r") as f:
@@ -74,8 +76,9 @@ def get_options() -> dict:
     except json.JSONDecodeError as e:
         logger.error("Failed to parse options.json: %s", e)
         merged = DEFAULT_OPTIONS.copy()
-    # Runtime settings override HA-managed values
+    # Runtime settings override HA-managed values (except device index)
     runtime = _load_runtime()
+    runtime.pop("audio_device_index", None)
     merged.update(runtime)
     return merged
 
