@@ -523,8 +523,10 @@ class DecoderService:
         chunk_size = opts["chunk_size"]
         device_index = opts["audio_device_index"]
         self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0  # 0-100 → 0.0x-20.0x (default 5 = 1.0x unity gain)
+        logger.info("Config: device_index=%s gain_raw=%s", device_index, opts.get("input_gain", 5))
         if device_index < 0:
             device_index = None  # PyAudio uses system default
+            logger.info("Using system default audio device (index=-1)")
 
         if not PYAUDIO_AVAILABLE:
             self._audio_error = "PyAudio not available — audio processing disabled"
@@ -589,9 +591,14 @@ class DecoderService:
             last_watchdog = time.time()
             last_drop_log = time.time()
             last_audio_received = time.time()
+            last_signal_check = time.time()
+            signal_silent_since: float | None = None
             PURGE_INTERVAL = PURGE_INTERVAL_SECONDS
             WATCHDOG_INTERVAL = 60  # push heartbeat every 60 seconds
             AUDIO_STALE_TIMEOUT = 10.0  # restart if no audio data for this long
+            SIGNAL_CHECK_INTERVAL = 60.0  # check signal health every 60s
+            SIGNAL_SILENCE_RESTART = 300.0  # restart if dead silence for 5 minutes
+            SIGNAL_SILENCE_THRESHOLD = -75.0  # dBFS — below this is "dead silence"
 
             while not self._stop_event.is_set() and stream.is_active():
                 try:
@@ -628,6 +635,31 @@ class DecoderService:
                 if now - last_watchdog > WATCHDOG_INTERVAL:
                     push_watchdog_sensor()
                     last_watchdog = now
+
+                # Signal health watchdog — detect dead audio path
+                # (stream alive but PulseAudio sending silence)
+                if now - last_signal_check > SIGNAL_CHECK_INTERVAL:
+                    last_signal_check = now
+                    rms = self._last_rms
+                    dbfs = 20.0 * np.log10(max(rms, 1e-10))
+                    if dbfs < SIGNAL_SILENCE_THRESHOLD:
+                        if signal_silent_since is None:
+                            signal_silent_since = now
+                            logger.warning(
+                                "Signal health: audio level very low (%.1f dBFS) — monitoring",
+                                dbfs,
+                            )
+                        elif now - signal_silent_since > SIGNAL_SILENCE_RESTART:
+                            logger.error(
+                                "Signal health: dead silence for %.0fs (%.1f dBFS) — forcing restart",
+                                now - signal_silent_since, dbfs,
+                            )
+                            fire_health_event("audio_lost", "Dead silence detected — restarting audio")
+                            break  # triggers auto-restart
+                    else:
+                        if signal_silent_since is not None:
+                            logger.info("Signal health: audio level recovered (%.1f dBFS)", dbfs)
+                        signal_silent_since = None
 
                 # Log audio chunk drops (indicates processing can't keep up)
                 if now - last_drop_log > 30 and _drop_count[0] > 0:
