@@ -521,29 +521,35 @@ class DecoderService:
 
     @staticmethod
     def _find_alsa_capture_device():
-        """Find ALSA hardware capture device by scanning /dev/snd/."""
-        capture_devs = sorted(glob.glob("/dev/snd/pcmC*D*c"))
-        for dev in capture_devs:
-            basename = os.path.basename(dev)
-            try:
-                card = int(basename.split("C")[1].split("D")[0])
-                device = int(basename.split("D")[1].rstrip("c"))
-                hw_addr = f"hw:{card},{device}"
-                logger.info("ALSA capture device found: %s (%s)", hw_addr, dev)
-                return hw_addr
-            except (IndexError, ValueError):
-                continue
+        """Find a working ALSA capture device.
+
+        Tries multiple methods in order of reliability:
+        1. PulseAudio source name (works inside Docker containers)
+        2. 'default' ALSA device
+        3. Direct hardware device from /dev/snd/ scan
+        """
+        # Method 1: Find PulseAudio input source name (most reliable in Docker)
         try:
-            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                ["pactl", "list", "sources", "short"],
+                capture_output=True, text=True, timeout=5,
+            )
             if result.returncode == 0:
                 for line in result.stdout.splitlines():
-                    m = re.match(r"card\s+(\d+).*device\s+(\d+)", line)
-                    if m:
-                        hw_addr = f"hw:{m.group(1)},{m.group(2)}"
-                        logger.info("ALSA capture device found (arecord): %s", hw_addr)
-                        return hw_addr
+                    parts = line.split("\t")
+                    if len(parts) >= 2 and "input" in parts[1]:
+                        # Use 'pulse' device — PulseAudio handles routing
+                        logger.info("PulseAudio capture source found: %s", parts[1])
+                        return "pulse"
         except Exception as e:
-            logger.debug("arecord -l failed: %s", e)
+            logger.debug("pactl failed: %s", e)
+
+        # Method 2: Check if /dev/snd/ has any capture devices
+        capture_devs = sorted(glob.glob("/dev/snd/pcmC*D*c"))
+        if capture_devs:
+            logger.info("ALSA capture devices in /dev/snd/: %s", capture_devs)
+            return "default"
+
         return None
 
     def _run(self):
