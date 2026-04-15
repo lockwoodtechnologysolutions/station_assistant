@@ -3,11 +3,13 @@ decoder.py
 Audio capture and two-tone detection engine.
 
 Architecture:
-  AudioCapture  — PyAudio callback pushes raw chunks into a queue
+  ALSA direct capture via arecord (primary) or PyAudio/PulseAudio (fallback)
   SequenceMachine — per-sequence state machine tracking tone progression
   DecoderService  — orchestrates everything, emits SocketIO events, fires HA events
 """
 
+import glob
+import os
 import re
 import time
 import queue
@@ -517,17 +519,51 @@ class DecoderService:
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _find_alsa_capture_device():
+        """Find ALSA hardware capture device by scanning /dev/snd/."""
+        capture_devs = sorted(glob.glob("/dev/snd/pcmC*D*c"))
+        for dev in capture_devs:
+            basename = os.path.basename(dev)
+            try:
+                card = int(basename.split("C")[1].split("D")[0])
+                device = int(basename.split("D")[1].rstrip("c"))
+                hw_addr = f"hw:{card},{device}"
+                logger.info("ALSA capture device found: %s (%s)", hw_addr, dev)
+                return hw_addr
+            except (IndexError, ValueError):
+                continue
+        try:
+            result = subprocess.run(["arecord", "-l"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    m = re.match(r"card\s+(\d+).*device\s+(\d+)", line)
+                    if m:
+                        hw_addr = f"hw:{m.group(1)},{m.group(2)}"
+                        logger.info("ALSA capture device found (arecord): %s", hw_addr)
+                        return hw_addr
+        except Exception as e:
+            logger.debug("arecord -l failed: %s", e)
+        return None
+
     def _run(self):
         opts = get_options()
         sample_rate = opts["sample_rate"]
         chunk_size = opts["chunk_size"]
-        device_index = opts["audio_device_index"]
-        self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0  # 0-100 → 0.0x-20.0x (default 5 = 1.0x unity gain)
-        logger.info("Config: device_index=%s gain_raw=%s", device_index, opts.get("input_gain", 5))
-        if device_index < 0:
-            device_index = None  # PyAudio uses system default
-            logger.info("Using system default audio device (index=-1)")
+        self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0
 
+        # Try direct ALSA capture first (bypasses PulseAudio entirely)
+        alsa_device = self._find_alsa_capture_device()
+        if alsa_device:
+            logger.info("Using direct ALSA capture: %s (bypassing PulseAudio)", alsa_device)
+            self._run_alsa(alsa_device, sample_rate, chunk_size)
+            return
+
+        # Fallback: PyAudio / PulseAudio
+        logger.warning("No ALSA capture device found, falling back to PyAudio")
+        device_index = opts.get("audio_device_index", -1)
+        if device_index < 0:
+            device_index = None
         if not PYAUDIO_AVAILABLE:
             self._audio_error = "PyAudio not available — audio processing disabled"
             logger.error(self._audio_error)
@@ -697,6 +733,120 @@ class DecoderService:
                     )
                     self._audio_error = "No audio input devices detected. Retrying..."
                     self._emit_status()
+                self._watchdog_restart()
+
+
+    def _run_alsa(self, alsa_device, sample_rate, chunk_size):
+        """Capture audio directly from ALSA via arecord — bypasses PulseAudio."""
+        bytes_per_chunk = chunk_size * 2  # 16-bit mono
+
+        cmd = [
+            "arecord", "-D", alsa_device,
+            "-f", "S16_LE", "-r", str(sample_rate), "-c", "1", "-t", "raw",
+            "--buffer-size", str(chunk_size * 4),
+            "--period-size", str(chunk_size),
+        ]
+        logger.info("ALSA command: %s", " ".join(cmd))
+
+        proc = None
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                bufsize=bytes_per_chunk,
+            )
+            self._audio_error = ""
+            self._restart_backoff = 5.0
+            self.stream_bus.sample_rate = sample_rate
+            self._cached_devices = [{"index": 0, "name": alsa_device, "channels": 1, "sample_rate": sample_rate}]
+            logger.info("Audio stream opened: device=%s rate=%d chunk=%d gain=%.1fx (ALSA direct)",
+                        alsa_device, sample_rate, chunk_size, self._input_gain)
+            self._emit_status()
+            fire_health_event("started", f"Decoder started: {alsa_device} rate={sample_rate} (ALSA)")
+
+            def stderr_reader():
+                try:
+                    for line in proc.stderr:
+                        msg = line.decode("utf-8", errors="replace").rstrip()
+                        if msg:
+                            logger.warning("arecord: %s", msg)
+                except Exception:
+                    pass
+            threading.Thread(target=stderr_reader, daemon=True, name="arecord-err").start()
+
+            last_purge = time.time()
+            last_watchdog = time.time()
+            last_signal_check = time.time()
+            signal_silent_since = None
+            PURGE_INTERVAL = PURGE_INTERVAL_SECONDS
+            WATCHDOG_INTERVAL = 60
+            SIGNAL_CHECK_INTERVAL = 60.0
+            SIGNAL_SILENCE_RESTART = 300.0
+            SIGNAL_SILENCE_THRESHOLD = -75.0
+
+            while not self._stop_event.is_set():
+                raw = proc.stdout.read(bytes_per_chunk)
+                if not raw or len(raw) < bytes_per_chunk:
+                    if proc.poll() is not None:
+                        logger.error("arecord exited with code %d", proc.returncode)
+                        break
+                    continue
+
+                samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+                try:
+                    self._process_chunk(samples, sample_rate)
+                except Exception as e:
+                    logger.exception("Error processing audio chunk: %s", e)
+                    continue
+
+                now = time.time()
+                if now - last_purge > PURGE_INTERVAL:
+                    purge_opts = get_options()
+                    purge_days = max(1, min(365, int(purge_opts.get("log_retention_days", 30))))
+                    purge_old_records(purge_days)
+                    last_purge = now
+                if now - last_watchdog > WATCHDOG_INTERVAL:
+                    push_watchdog_sensor()
+                    last_watchdog = now
+                if now - last_signal_check > SIGNAL_CHECK_INTERVAL:
+                    last_signal_check = now
+                    rms = self._last_rms
+                    dbfs = 20.0 * np.log10(max(rms, 1e-10))
+                    if dbfs < SIGNAL_SILENCE_THRESHOLD:
+                        if signal_silent_since is None:
+                            signal_silent_since = now
+                            logger.warning("Signal health: audio level very low (%.1f dBFS)", dbfs)
+                        elif now - signal_silent_since > SIGNAL_SILENCE_RESTART:
+                            logger.error("Signal health: dead silence for %.0fs (%.1f dBFS) -- forcing restart",
+                                         now - signal_silent_since, dbfs)
+                            fire_health_event("audio_lost", "Dead silence -- restarting audio")
+                            break
+                    else:
+                        if signal_silent_since is not None:
+                            logger.info("Signal health: audio level recovered (%.1f dBFS)", dbfs)
+                        signal_silent_since = None
+
+        except OSError as e:
+            self._audio_error = f"ALSA device error: {e}"
+            logger.error(self._audio_error)
+            self._emit_status()
+            fire_health_event("audio_lost", self._audio_error)
+        except Exception as e:
+            self._audio_error = f"Decoder error: {e}"
+            logger.exception("Unexpected decoder error")
+            self._emit_status()
+            fire_health_event("error", self._audio_error)
+        finally:
+            if proc:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=3)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            self._running = False
+            if not self._intentional_stop and not self._stop_event.is_set():
                 self._watchdog_restart()
 
     def _process_chunk(self, samples: np.ndarray, sample_rate: int):
