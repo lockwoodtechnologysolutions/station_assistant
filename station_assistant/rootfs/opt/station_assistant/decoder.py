@@ -553,6 +553,29 @@ class DecoderService:
         return None
 
     @staticmethod
+    def _disable_usb_autosuspend():
+        """Disable USB autosuspend for all devices.
+
+        Prevents the USB sound card from being suspended during idle
+        periods, which kills the audio stream silently.
+        """
+        for path in glob.glob("/sys/bus/usb/devices/*/power/autosuspend"):
+            try:
+                with open(path, "w") as f:
+                    f.write("-1")
+            except (PermissionError, OSError):
+                pass  # read-only or no access — skip silently
+        # Verify
+        for path in glob.glob("/sys/bus/usb/devices/*/power/autosuspend"):
+            try:
+                with open(path, "r") as f:
+                    val = f.read().strip()
+                    if val != "-1":
+                        logger.warning("USB autosuspend: %s = %s (could not disable)", path, val)
+            except Exception:
+                pass
+
+    @staticmethod
     def _configure_pulseaudio():
         """Ensure PulseAudio input source is unmuted and at full volume.
 
@@ -594,7 +617,8 @@ class DecoderService:
         chunk_size = opts["chunk_size"]
         self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0
 
-        # Configure PulseAudio source before opening the stream
+        # Disable USB autosuspend and configure PulseAudio before opening
+        self._disable_usb_autosuspend()
         self._configure_pulseaudio()
 
         # Try direct ALSA capture first
