@@ -570,7 +570,7 @@ class DecoderService:
             try:
                 with open(path, "r") as f:
                     val = f.read().strip()
-                    if val != "-1":
+                    if val not in ("-1", "0"):
                         logger.warning("USB autosuspend: %s = %s (could not disable)", path, val)
             except Exception:
                 pass
