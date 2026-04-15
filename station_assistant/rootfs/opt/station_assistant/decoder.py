@@ -552,16 +552,55 @@ class DecoderService:
 
         return None
 
+    @staticmethod
+    def _configure_pulseaudio():
+        """Ensure PulseAudio input source is unmuted and at full volume.
+
+        Called at startup to prevent silent audio after reboots.
+        Sets the default source to the USB audio input and volume to 100%.
+        """
+        try:
+            # Find the USB input source
+            result = subprocess.run(
+                ["pactl", "list", "sources", "short"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode != 0:
+                return
+            for line in result.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) >= 2 and "input" in parts[1]:
+                    source = parts[1]
+                    subprocess.run(
+                        ["pactl", "set-default-source", source],
+                        capture_output=True, timeout=5,
+                    )
+                    subprocess.run(
+                        ["pactl", "set-source-mute", source, "0"],
+                        capture_output=True, timeout=5,
+                    )
+                    subprocess.run(
+                        ["pactl", "set-source-volume", source, "100%"],
+                        capture_output=True, timeout=5,
+                    )
+                    logger.info("PulseAudio: configured %s (unmuted, 100%% volume)", source)
+                    return
+        except Exception as e:
+            logger.debug("PulseAudio configuration failed: %s", e)
+
     def _run(self):
         opts = get_options()
         sample_rate = opts["sample_rate"]
         chunk_size = opts["chunk_size"]
         self._input_gain = opts.get("input_gain", 5) / 100.0 * 20.0
 
-        # Try direct ALSA capture first (bypasses PulseAudio entirely)
+        # Configure PulseAudio source before opening the stream
+        self._configure_pulseaudio()
+
+        # Try direct ALSA capture first
         alsa_device = self._find_alsa_capture_device()
         if alsa_device:
-            logger.info("Using direct ALSA capture: %s (bypassing PulseAudio)", alsa_device)
+            logger.info("Using ALSA capture: %s", alsa_device)
             self._run_alsa(alsa_device, sample_rate, chunk_size)
             return
 
