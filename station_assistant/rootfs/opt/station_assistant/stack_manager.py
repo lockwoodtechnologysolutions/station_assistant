@@ -165,7 +165,9 @@ class StackManager:
             already = any(u["seq_id"] == seq["id"] for u in self._stack)
             if not already:
                 self._stack.append(unit)
-                logger.info("Stacked: %s (total %d units)", seq["name"], len(self._stack))
+                unit_names = ", ".join(u["label"] for u in self._stack)
+                logger.info("STACKED: added %s → incident now has %d units [%s]",
+                            seq["name"], len(self._stack), unit_names)
                 self._fire_dashboard(return_timeout)
             else:
                 logger.debug("Duplicate ignored: %s", seq["name"])
@@ -309,11 +311,17 @@ class StackManager:
 
         try:
             ha._post("/events/station_assistant_alert", payload)
-            logger.info(
-                "station_assistant_alert fired (gap expired): %s (%d unit%s)",
-                payload["unit_label"], len(stack_snapshot),
-                "s" if is_multi else "",
-            )
+            if is_multi:
+                unit_names = ", ".join(u["label"] for u in stack_snapshot)
+                logger.info(
+                    "STACKED DISPATCH fired: %d units — [%s]",
+                    len(stack_snapshot), unit_names,
+                )
+            else:
+                logger.info(
+                    "Single-unit dispatch fired: %s",
+                    payload["unit_label"],
+                )
         except Exception as e:
             logger.error("Failed to fire station_assistant_alert: %s", e)
 
